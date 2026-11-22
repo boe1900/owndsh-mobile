@@ -9,6 +9,7 @@ import json
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 
 BUILD = pathlib.Path(__file__).resolve().parents[2] / 'build/ios-probe'
@@ -16,7 +17,11 @@ BUNDLE = 'com.owndsh.runtimeprobe'
 
 
 def sim(*args, check=True):
-    return subprocess.run(['xcrun', 'simctl', *args], check=check, text=True, capture_output=True)
+    result = subprocess.run(['xcrun', 'simctl', *args], text=True, capture_output=True)
+    if check and result.returncode:
+        print(result.stderr, file=sys.stderr)
+        result.check_returncode()
+    return result
 
 
 def main():
@@ -24,9 +29,13 @@ def main():
     runtimes = [runtime for runtime in data['runtimes']
                 if runtime.get('isAvailable') and runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
     runtime = max(runtimes, key=lambda value: tuple(map(int, value['version'].split('.'))))
-    devices = [device for device in data['devicetypes'] if device['name'].startswith('iPhone')]
-    device = devices[-1]
-    udid = sim('create', 'OwnDsh Runtime Probe', device['identifier'], runtime['identifier']).stdout.strip()
+    devices = [device for device in data['devices'].get(runtime['identifier'], [])
+               if device.get('isAvailable') and device['name'].startswith('iPhone')]
+    if devices:
+        device_type = devices[0]['deviceTypeIdentifier']
+    else:
+        device_type = next(device['identifier'] for device in data['devicetypes'] if device['name'] == 'iPhone 16')
+    udid = sim('create', 'OwnDsh Runtime Probe', device_type, runtime['identifier']).stdout.strip()
     try:
         sim('boot', udid)
         sim('bootstatus', udid, '-b')
