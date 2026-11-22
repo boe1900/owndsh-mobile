@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "nsh": "0.6.1",
+  "nodeMobile": "24.20.0-0",
+  "harness": "0.2.2-rc.5",
+  "ownDshPlugin": "0.1.0-beta.22",
+  "android": {
+    "compileSdk": 35,
+    "targetSdk": 35,
+    "minSdk": 28,
+    "buildTools": "35.0.0",
+    "ndk": "27.1.12297006",
+    "abi": "arm64-v8a",
+    "java": 17
+  },
+  "downloads": [
+    {
+      "name": "nsh-cli",
+      "url": "https://github.com/longbridge/nsh/releases/download/v0.6.1/nsh-macos-arm64.tar.gz",
+      "hash": "ee1aed2a4d111fe90e6cceca4b9d5f834c9e11cfda525f8be984261a329c06de",
+      "algorithm": "sha256",
+      "kind": "tar"
+    },
+    {
+      "name": "nsh-embed",
+      "url": "https://github.com/longbridge/nsh/releases/download/v0.6.1/nsh-embed-android.zip",
+      "hash": "6da8dfd064e94c033935aed35b643e55581fadeb546000b2a5af18f6ec85701e",
+      "algorithm": "sha256",
+      "kind": "zip"
+    },
+    {
+      "name": "node-mobile",
+      "url": "https://github.com/digidem/nodejs-mobile/releases/download/v24.20.0-0/nodejs-mobile-android-24.20.0-0.zip",
+      "hash": "f5ffbaf4f2679fa9180b0758c637c2f8fc8828300f95129badf213a028fb37bb",
+      "algorithm": "sha256",
+      "kind": "zip"
+    },
+    {
+      "name": "platform",
+      "url": "https://dl.google.com/android/repository/platform-35_r02.zip",
+      "hash": "0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0",
+      "algorithm": "sha256",
+      "kind": "zip",
+      "upstreamSha1": "0bb560a90a7a2cbd0dd8348224d518b638fe7949"
+    },
+    {
+      "name": "build-tools",
+      "url": "https://dl.google.com/android/repository/build-tools_r35_macosx.zip",
+      "hash": "530cdbd1ec315e1477624d7ed2f0f2962108d69f36eddba5894cef9ea2cedb48",
+      "algorithm": "sha256",
+      "kind": "zip",
+      "upstreamSha1": "93ab8ce91230e067b5add4bfa79919c52b27f072"
+    },
+    {
+      "name": "ndk",
+      "url": "https://dl.google.com/android/repository/android-ndk-r27b-darwin.zip",
+      "hash": "cf9b9eef50841f409f586e7ae12901007c7f545722612065bd63afbab1844152",
+      "algorithm": "sha256",
+      "kind": "zip",
+      "upstreamSha1": "c70c9791b0d258858678f6df31c4319140e2926e"
+    }
+  ]
+}

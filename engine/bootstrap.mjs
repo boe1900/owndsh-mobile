@@ -1,0 +1,111 @@
+/**
+ * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与私有目录中的 Android 消息通道
+ * [OUTPUT]: 启动带纯文本附件准入的真实 Web profile，发布经过会话服务/preset/HTTP 核验的状态，复用原插件 PKCE 的浏览器接缝
+ * [POS]: mobile/engine 的跨平台入口；平台仅提供路径与浏览器交接，不拥有 DSH 会话或认证令牌
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { publishExclusive, verifyNativeStorage } from './native-storage.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+
+const [configPath] = process.argv.slice(2);
+const config = JSON.parse(await readFile(configPath, 'utf8'));
+const root = dirname(fileURLToPath(import.meta.url));
+const { generation, runDirectory, home, workspace } = config;
+for (const path of [runDirectory, home, workspace]) await mkdir(path, { recursive: true });
+process.env.DSH_HOME = home;
+process.env.DSH_TELEMETRY_DISABLED = '1';
+process.env.HOME = home;
+process.env.TMPDIR = join(home, 'tmp');
+await mkdir(process.env.TMPDIR, { recursive: true });
+process.chdir(workspace);
+
+async function writeAtomic(name, value) {
+  const path = join(runDirectory, name);
+  await writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 });
+  await rename(`${path}.tmp`, path);
+}
+async function publish(state) { await writeAtomic('state.json', { generation, ...state }); }
+
+async function requestNative(kind, data, signal) {
+  signal.throwIfAborted();
+  const id = randomUUID();
+  const name = `browser-${id}`;
+  await writeAtomic(`${name}.request`, { generation, id, kind, ...data });
+  try {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      signal.throwIfAborted();
+      try {
+        const result = JSON.parse(await readFile(join(runDirectory, `${name}.response`), 'utf8'));
+        if (result.generation !== generation) throw new Error('Stale browser response');
+        if (!result.ok) throw new Error('Android native request failed');
+        return result.data;
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await delay(100, undefined, { signal });
+    }
+    throw new Error('Android native request timed out');
+  } finally {
+    await Promise.all([rm(join(runDirectory, `${name}.request`), { force: true }), rm(join(runDirectory, `${name}.response`), { force: true })]);
+  }
+}
+globalThis[Symbol.for('owndsh.mobile.request')] = requestNative;
+globalThis[Symbol.for('owndsh.mobile.openSystemBrowser')] = async (url, signal) => {
+  const parsed = new URL(url);
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Unsupported browser URL');
+  await requestNative('browser', { url }, signal);
+};
+
+try {
+  await publish({ phase: 'starting' });
+  globalThis[Symbol.for('owndsh.mobile.publishExclusive')] = publishExclusive;
+  await verifyNativeStorage(runDirectory);
+  const { initProfile, loadProfileDirectory, auditStartupEntries } = await import('@deepseek-ai/dsh-app-boot');
+  const { createLaunchEnvironmentSnapshot } = await import('@deepseek-ai/dsh-launch-environment');
+  const { runProfile } = await import('@deepseek-ai/dsh/profile-boot');
+  const profileDirectory = join(home, 'profiles', 'mobile');
+  initProfile(profileDirectory, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'owndsh-plugin']);
+  const overlay = join(runDirectory, 'mobile.patch.yml');
+  const overlaySource = await readFile(join(root, 'mobile.patch.yml'), 'utf8');
+  await writeFile(overlay, overlaySource.replace('MOBILE_SHELL_FILE', pathToFileURL(join(root, 'unavailable-shell.mjs')).href).replace('MOBILE_DEVICE_TOOL_FILE', pathToFileURL(join(root, 'device-info.mjs')).href).replace('MOBILE_ATTACHMENTS_FILE', pathToFileURL(join(root, 'text-only-attachments.mjs')).href));
+  const anchor = join(root, 'package.json');
+  const profile = loadProfileDirectory('owndsh-mobile', profileDirectory, anchor);
+  if (profile.skippedBundles.length) throw new Error(JSON.stringify(profile.skippedBundles));
+  const { ctx } = await runProfile({
+    profile: 'mobile',
+    environment: createLaunchEnvironmentSnapshot([{ source: 'process', values: process.env }]),
+    resolvedProfile: { profile, installAnchor: anchor },
+    patchFiles: [overlay],
+    args: ['--host', '127.0.0.1', '--port', '0', '--no-open'],
+  });
+  await ctx.loader.await();
+  await auditStartupEntries(ctx.root, 'owndsh-mobile', () => {});
+  for (const service of ['enterprisePlatform', 'connection', 'webServer', 'sessionController', 'attachments', 'agentPresets']) {
+    if (!ctx.get(service)) throw new Error(`Required DSH/OwnDsh service did not activate: ${service}`);
+  }
+  const mobilePreset = (await ctx.agentPresets.compositionInventory()).find(preset => preset.id === 'mobile');
+  if (!mobilePreset || mobilePreset.broken !== undefined) throw new Error(`Mobile preset is unavailable: ${mobilePreset?.broken ?? 'missing'}`);
+  await ctx.enterprisePlatform.installation;
+  await ctx.workspaceRegistry.initializeDefault(async () => workspace);
+  globalThis[Symbol.for('owndsh.mobile.authorizeLocal')] = request => !('rejection' in ctx.connection.admit(request));
+  const origin = ctx.webServer.getOrigin();
+  const exchange = await fetch(ctx.connection.authenticatedUrl(origin), { redirect: 'manual' });
+  const cookie = exchange.headers.get('set-cookie');
+  if (exchange.status !== 303 || !cookie) throw new Error(`DSH browser authentication exchange failed: ${exchange.status}`);
+  const page = await fetch(origin, { headers: { cookie: cookie.split(';', 1)[0] } });
+  if (!page.ok || !(await page.text()).includes('__DSH_BOOT__')) throw new Error('Official DSH WebUI HTTP readiness check failed');
+  const statusUrl = new URL('/enterprise/api/v1/local/status', origin);
+  const unauthorized = await fetch(statusUrl);
+  if (unauthorized.status !== 403) throw new Error('OwnDsh local API admitted an unauthenticated request');
+  const authorized = await fetch(statusUrl, { headers: { cookie: cookie.split(';', 1)[0] } });
+  if (!authorized.ok || (await authorized.json()).data.bundleVersion !== '0.1.0-beta.22') throw new Error('OwnDsh authenticated local API is unavailable');
+  await publish({ phase: 'ready', origin, cookie, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22', nativeStorage: 'flock+renameat2', pid: process.pid });
+  process.stderr.write(`OWNDSH_READY ${JSON.stringify({ generation, origin, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22' })}\n`);
+} catch (error) {
+  process.stderr.write(`${error.stack ?? error}\n`);
+  await publish({ phase: 'failed', reason: String(error.message ?? error) });
+  setTimeout(() => process.exit(1), 1500);
+}

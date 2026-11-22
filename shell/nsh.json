@@ -1,0 +1,10 @@
+{
+  "name": "OwnDsh",
+  "id": "com.owndsh.mobile",
+  "capabilities": {
+    "host": [
+      "runtime.status"
+    ],
+    "statusBar": true
+  }
+}
