@@ -1,4 +1,4 @@
-# Android 自动生命周期
+# 移动端自动生命周期
 
 应用打开后自动进入 DSH。工作区占满系统栏安全区域，NSH 只显示全屏启动或恢复状态。原生层不提供启动、停止、重试及管控台入口。远程连接沿用 DSH 自有远程工作区。
 
@@ -31,3 +31,14 @@ HTTP 错误保留目标并显示只读中断说明，重新进入前台后再尝
 `scripts/build.py` 执行真实 NSH 遮罩渲染与本地 JVM 恢复策略回归，再编译 APK。策略测试覆盖持续崩溃限速、短暂就绪不清债、稳定窗口与加载中断。Binder、Renderer 和前后台行为须在 Android 上验证，编译及策略测试不代表设备验收。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
+
+## iOS所有权
+
+EngineOwner在进程内一次node_start，Swift持有唯一generation、前后台与恢复任务。Node主线程先设稳定workspace的cwd，只串行执行revision run/stop；每代独立runDirectory，终止旧Worker并写exit.json后才允许下一代。Worker运行共享bootstrap，不能调用process.chdir。Swift没有收到旧代exit时不建立新代，Cookie/导航/页面回调也检查当前代和页面身份。
+
+健康Worker在后台允许系统挂起，不申请无限后台执行。后台取消恢复，前台真实HTTP探测后复用或恢复；Worker JS退出可恢复，native崩溃不在Worker隔离范围内。退避沿用Android的1/2/4/8/16/30秒及5分钟上限，页面持续健康60秒才清债。
+
+WKWebView内容进程退出只恢复页面。同源相对目标和有限历史保存在内存，不保存旧端口或认证参数；HTTP错误保留目标并等待下次前台。系统Safari容器承载插件原HTTP loopback PKCE，保持登录期间应用前台；无新token协议或授权回调scheme。
+
+scripts/verify-ios.py在其自行创建的Simulator内验证实际ready、WebUI、认证门、页面提交、页面独立重建、Worker code77退出和原生锁释放；Debug控制只接受当前代私有文件。企业OAuth仍须真机验收。

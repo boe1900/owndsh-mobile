@@ -60,5 +60,30 @@
       "kind": "zip",
       "upstreamSha1": "c70c9791b0d258858678f6df31c4319140e2926e"
     }
+  ],
+  "ios": {
+    "deploymentTarget": "15.0",
+    "architectures": [
+      "arm64"
+    ],
+    "bundleIdentifier": "com.owndsh.mobile",
+    "xcode": "26.6",
+    "swiftCompiler": "6.3.3"
+  },
+  "iosDownloads": [
+    {
+      "name": "node-ios",
+      "url": "https://github.com/digidem/nodejs-mobile/releases/download/v24.20.0-0/nodejs-mobile-ios-24.20.0-0.zip",
+      "hash": "f97c5f368f5982fdc062b0f97d96d7696f94dbaf286fbd0d3c515b596088bca8",
+      "algorithm": "sha256",
+      "kind": "zip"
+    },
+    {
+      "name": "nsh-ios",
+      "url": "https://github.com/longbridge/nsh/releases/download/v0.6.1/nsh-embed-ios.zip",
+      "hash": "35df68e58cb05de5e802d4fb9bd92b9bace0b3cf5dc480b3a68c6ab5f103c478",
+      "algorithm": "sha256",
+      "kind": "zip"
+    }
   ]
 }

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 npm lock 的干净 Android 目标安装及固定 DSH/beta.22 的完整源码指纹
+ * [INPUT]: 依赖 npm lock 的独立目标暂存安装及固定 DSH/beta.22 的完整源码指纹
  * [OUTPUT]: 校验并适配 builtin、浏览器交接、Cookie 准入、flock 加载、原子发布与附件 UI 门禁；原协议和错误分类仍由上游持有
  * [POS]: mobile 构建的失败关闭适配器，上游任何相关字节变化都要求重新评审
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'engine');
+const root = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'build', 'android', 'engine');
 const patches = [
   {
     path: 'node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js',
@@ -17,7 +17,7 @@ const patches = [
     before: 'uploadDenied=useAccess(`fileUploads/upload`)===false',
     after: 'uploadDenied=true',
   },
-{"path": "node_modules/@deepseek-ai/node-addon-system/lib/flock.js", "hash": "e42af00c298d56322c073bf7cc66485096028318ab645a2e69dc2aa7481ba646", "before": "    const { platform, arch } = process;", "after": "    if (process.platform === 'android') { const module = { exports: {} }; process.dlopen(module, 'libowndsh_flock.so'); return binding = module.exports; }\n    const { platform, arch } = process;"},
+{"path": "node_modules/@deepseek-ai/node-addon-system/lib/flock.js", "hash": "e42af00c298d56322c073bf7cc66485096028318ab645a2e69dc2aa7481ba646", "before": "    const { platform, arch } = process;", "after": "    if (globalThis[Symbol.for('owndsh.mobile.flockBinding')]) return binding = globalThis[Symbol.for('owndsh.mobile.flockBinding')];\n    const { platform, arch } = process;"},
 {"path": "node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js", "hash": "69efef5f84dddf947032bc1425067878fa610416c8885acde2ded9b01230c9b7", "before": "await internals.fs.link(staged, currentPath);", "after": "await globalThis[Symbol.for(\"owndsh.mobile.publishExclusive\")](staged, currentPath);", "secondBefore": "await link(tmp, finalPath);", "secondAfter": "await globalThis[Symbol.for(\"owndsh.mobile.publishExclusive\")](tmp, finalPath);"},
 {"path": "node_modules/@deepseek-ai/dsh-fs-local/lib/index.js", "hash": "610a3ba3658e55adaa3d8d21e017eb6787860adf317e889fb361e8802c8f5a13", "before": "const linkFile = internals.linkFile ?? link;", "after": "const linkFile = internals.linkFile ?? globalThis[Symbol.for(\"owndsh.mobile.publishExclusive\")];"},
   {

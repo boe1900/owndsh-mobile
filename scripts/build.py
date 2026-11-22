@@ -94,32 +94,8 @@ for alias, verified in [
 bt = sdk / 'build-tools' / lock['android']['buildTools']
 ndk = sdk / 'ndk' / lock['android']['ndk'] / 'toolchains/llvm/prebuilt/darwin-x86_64'
 android = sdk / 'platforms/android-35/android.jar'
-if not args.skip_install:
-    run([pathlib.Path(args.node).resolve().with_name('npm'), 'ci', '--ignore-scripts', '--omit=optional', '--os=android', '--cpu=arm64', '--registry=https://registry.npmjs.org'], cwd=ROOT / 'engine')
-run([args.node, ROOT / 'scripts/prepare-engine.mjs'])
-run([args.node, '--test', ROOT / 'engine/text-only-attachments.test.mjs'])
-run([tools / 'nsh-cli/nsh/bin/nsh', 'test', ROOT / 'shell'])
-assets = build / 'assets'
-assets.mkdir(exist_ok=True)
-shutil.copytree(ROOT / 'licenses', assets / 'licenses', dirs_exist_ok=True)
-run([tools / 'nsh-cli/nsh/bin/nsh', 'build', ROOT / 'shell', '--release', '--out', assets / 'nsh'])
-excluded = []
-with zipfile.ZipFile(assets / 'engine.zip', 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-    for path in sorted((ROOT / 'engine').rglob('*')):
-        if not path.is_file(): continue
-        relative = path.relative_to(ROOT / 'engine')
-        if path.suffix in ('.node', '.so', '.dylib', '.dll', '.exe'):
-            excluded.append({'path': str(relative), 'sha256': digest(path)})
-            continue
-        if path.suffix in ('.map', '.ts', '.tsx') or path.name.endswith('.test.mjs') or 'node_modules/.bin/' in str(relative): continue
-        info = zipfile.ZipInfo(str(relative), (1980, 1, 1, 0, 0, 0))
-        info.external_attr = 0o100644 << 16
-        archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
-(assets / 'engine.sha256').write_text(digest(assets / 'engine.zip') + '\n')
-(build / 'excluded-native.json').write_text(json.dumps(excluded, indent=2) + '\n')
-for item in excluded:
-    if not (item['path'].startswith('node_modules/node-pty/') or item['path'].startswith('node_modules/@deepseek-ai/libreoffice-kit/')):
-        raise SystemExit('Unreviewed native dependency: ' + item['path'])
+from payload import prepare_payload
+stage, assets = prepare_payload(ROOT, 'android', build, tools / 'nsh-cli/nsh/bin/nsh', args.node, env, args.skip_install)
 aar = build / 'nsh-aar'
 with zipfile.ZipFile(tools / 'nsh-embed/nsh-embed-android/nsh.aar') as archive: archive.extractall(aar)
 classes = build / 'classes'
@@ -128,25 +104,25 @@ libs = build / 'lib/arm64-v8a'
 for directory in [classes, dex, libs]:
     if directory.exists(): shutil.rmtree(directory)
     directory.mkdir(parents=True)
-run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', str(android) + os.pathsep + str(bt / 'core-lambda-stubs.jar'), '-classpath', str(aar / 'classes.jar'), '-d', classes, *sorted((ROOT / 'android/src').rglob('*.java'))])
+run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', str(android) + os.pathsep + str(bt / 'core-lambda-stubs.jar'), '-classpath', str(aar / 'classes.jar'), '-d', classes, *sorted((ROOT / 'platforms/android/src').rglob('*.java'))])
 policy_tests = build / 'lifecycle-test-classes'
 if policy_tests.exists(): shutil.rmtree(policy_tests)
 policy_tests.mkdir()
-run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests, ROOT / 'android/src/com/owndsh/mobile/RecoveryPolicy.java', ROOT / 'android/RecoveryPolicyTest.java'])
+run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests, ROOT / 'platforms/android/src/com/owndsh/mobile/RecoveryPolicy.java', ROOT / 'platforms/android/RecoveryPolicyTest.java'])
 run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.RecoveryPolicyTest'])
 run([bt / 'd8', '--lib', android, '--min-api', '28', '--output', dex, aar / 'classes.jar', *sorted(classes.rglob('*.class'))])
 shutil.copy2(tools / 'node-mobile/bin/arm64-v8a/libnode.so', libs / 'libnode.so')
 shutil.copy2(aar / 'jni/arm64-v8a/libnsh.so', libs / 'libnsh.so')
 shutil.copy2(ndk / 'sysroot/usr/lib/aarch64-linux-android/libc++_shared.so', libs / 'libc++_shared.so')
-run([ndk / 'bin/aarch64-linux-android28-clang++', '-std=c++20', '-shared', '-fPIC', '-fexceptions', '-frtti', '-O2', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,-soname,libowndsh_node.so', '-I' + str(tools / 'node-mobile/include/node'), ROOT / 'android/cpp/node_bridge.cpp', '-L' + str(libs), '-lnode', '-llog', '-stdlib=libc++', '-o', libs / 'libowndsh_node.so'])
-for source, library in [(ROOT / 'engine/node_modules/@deepseek-ai/node-addon-system/src/flock.c', 'libowndsh_flock.so'), (ROOT / 'android/cpp/file_publish.c', 'libowndsh_fs.so')]:
+run([ndk / 'bin/aarch64-linux-android28-clang++', '-std=c++20', '-shared', '-fPIC', '-fexceptions', '-frtti', '-O2', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,-soname,libowndsh_node.so', '-I' + str(tools / 'node-mobile/include/node'), ROOT / 'platforms/android/cpp/node_bridge.cpp', '-L' + str(libs), '-lnode', '-llog', '-stdlib=libc++', '-o', libs / 'libowndsh_node.so'])
+for source, library in [(stage / 'node_modules/@deepseek-ai/node-addon-system/src/flock.c', 'libowndsh_flock.so'), (ROOT / 'platforms/android/cpp/file_publish.c', 'libowndsh_fs.so')]:
     run([ndk / 'bin/aarch64-linux-android28-clang', '-shared', '-fPIC', '-O2', '-DNAPI_VERSION=8', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-I' + str(tools / 'node-mobile/include/node'), source, '-L' + str(libs), '-lnode', '-o', libs / library])
 for library in libs.glob('*.so'): run([ndk / 'bin/llvm-strip', '--strip-unneeded', library])
 unsigned = build / 'owndsh-unsigned.apk'
 resources = build / 'resources.zip'
-resource_files = sorted(path for path in (ROOT / 'android/res').rglob('*') if path.suffix in ('.xml', '.png'))
+resource_files = sorted(path for path in (ROOT / 'platforms/android/res').rglob('*') if path.suffix in ('.xml', '.png'))
 run([bt / 'aapt2', 'compile', '-o', resources, *resource_files])
-run([bt / 'aapt2', 'link', '--manifest', ROOT / 'android/AndroidManifest.xml', '--version-code', version_code, '--version-name', version_name, '-I', android, '-R', resources, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
+run([bt / 'aapt2', 'link', '--manifest', ROOT / 'platforms/android/AndroidManifest.xml', '--version-code', version_code, '--version-name', version_name, '-I', android, '-R', resources, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
 with zipfile.ZipFile(unsigned, 'a') as archive:
     for path in sorted(dex.glob('*.dex')): archive.write(path, path.name, compress_type=zipfile.ZIP_DEFLATED)
     for path in sorted(libs.glob('*.so')): archive.write(path, 'lib/arm64-v8a/' + path.name, compress_type=zipfile.ZIP_STORED)

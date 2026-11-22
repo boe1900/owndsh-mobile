@@ -4,7 +4,7 @@
 # [POS]: mobile 供应链入口；下载后先验 hash，再解压并恢复供应商可执行位
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import argparse, hashlib, json, os, pathlib, shutil, tarfile, urllib.request, zipfile
-p = argparse.ArgumentParser(); p.add_argument('directory', type=pathlib.Path); a = p.parse_args()
+p = argparse.ArgumentParser(); p.add_argument('directory', type=pathlib.Path); p.add_argument('--platform', choices=['android', 'ios'], default='android'); a = p.parse_args()
 root = pathlib.Path(__file__).resolve().parents[1]
 lock = json.loads((root / 'versions.json').read_text())
 base = a.directory.resolve(); base.mkdir(parents=True, exist_ok=True)
@@ -13,7 +13,8 @@ def digest(path):
     with path.open('rb') as f:
         for chunk in iter(lambda: f.read(1024*1024), b''): h.update(chunk)
     return h.hexdigest()
-for item in lock['downloads']:
+items = lock['downloads'] if a.platform == 'android' else [lock['downloads'][0], *lock['iosDownloads']]
+for item in items:
     archive = base / (item['name'] + '.archive')
     if not archive.exists() or digest(archive) != item['hash']:
         part = archive.with_suffix('.download')
@@ -37,6 +38,7 @@ for item in lock['downloads']:
     else:
         with tarfile.open(archive) as bundle: bundle.extractall(target)
     print('Verified and extracted', item['name'])
+if a.platform == 'ios': raise SystemExit(0)
 sdk = base / 'sdk'
 links = {'platforms/android-35': base / 'platform/android-35', 'build-tools/35.0.0': base / 'build-tools/android-15', 'ndk/27.1.12297006': base / 'ndk/android-ndk-r27b'}
 for name, target in links.items():

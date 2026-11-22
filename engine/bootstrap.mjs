@@ -1,18 +1,20 @@
 /**
- * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与私有目录中的 Android 消息通道
+ * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与私有目录中的代次消息通道
  * [OUTPUT]: 启动带纯文本附件准入的真实 Web profile，发布经过会话服务/preset/HTTP 核验的状态，复用原插件 PKCE 的浏览器接缝
  * [POS]: mobile/engine 的跨平台入口；平台仅提供路径与浏览器交接，不拥有 DSH 会话或认证令牌
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, rm, open, realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { publishExclusive, verifyNativeStorage } from './native-storage.mjs';
+import { isMainThread } from 'node:worker_threads';
+import { parseRuntimeConfig } from './runtime-config.mjs';
+import { configureNativeStorage, publishExclusive, verifyNativeStorage } from './native-storage.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const [configPath] = process.argv.slice(2);
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+const config = parseRuntimeConfig(JSON.parse(await readFile(configPath, 'utf8')));
 const root = dirname(fileURLToPath(import.meta.url));
 const { generation, runDirectory, home, workspace } = config;
 for (const path of [runDirectory, home, workspace]) await mkdir(path, { recursive: true });
@@ -21,7 +23,8 @@ process.env.DSH_TELEMETRY_DISABLED = '1';
 process.env.HOME = home;
 process.env.TMPDIR = join(home, 'tmp');
 await mkdir(process.env.TMPDIR, { recursive: true });
-process.chdir(workspace);
+if (isMainThread) process.chdir(workspace);
+else if (process.cwd() !== await realpath(workspace)) throw new Error('Supervisor workspace mismatch');
 
 async function writeAtomic(name, value) {
   const path = join(runDirectory, name);
@@ -42,12 +45,12 @@ async function requestNative(kind, data, signal) {
       try {
         const result = JSON.parse(await readFile(join(runDirectory, `${name}.response`), 'utf8'));
         if (result.generation !== generation) throw new Error('Stale browser response');
-        if (!result.ok) throw new Error('Android native request failed');
+        if (!result.ok) throw new Error('Native request failed');
         return result.data;
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await delay(100, undefined, { signal });
     }
-    throw new Error('Android native request timed out');
+    throw new Error('Native request timed out');
   } finally {
     await Promise.all([rm(join(runDirectory, `${name}.request`), { force: true }), rm(join(runDirectory, `${name}.response`), { force: true })]);
   }
@@ -61,8 +64,21 @@ globalThis[Symbol.for('owndsh.mobile.openSystemBrowser')] = async (url, signal) 
 
 try {
   await publish({ phase: 'starting' });
+  configureNativeStorage(config.native);
   globalThis[Symbol.for('owndsh.mobile.publishExclusive')] = publishExclusive;
-  await verifyNativeStorage(runDirectory);
+  const nativeStorage = await verifyNativeStorage(runDirectory);
+  if (config.runtimeTest) {
+    const { tryLockExclusive } = await import('@deepseek-ai/node-addon-system/flock');
+    const held = await open(join(runDirectory, 'worker-held.lock'), 'a');
+    await tryLockExclusive(held.fd);
+    globalThis[Symbol.for('owndsh.mobile.testLock')] = held;
+    setInterval(async () => {
+      try {
+        const command = JSON.parse(await readFile(join(runDirectory, 'fail-worker.json'), 'utf8'));
+        if (command.generation === generation) process.exit(77);
+      } catch (error) { if (error.code !== 'ENOENT') process.stderr.write('OWNDSH_TEST invalid command\n'); }
+    }, 100).unref();
+  }
   const { initProfile, loadProfileDirectory, auditStartupEntries } = await import('@deepseek-ai/dsh-app-boot');
   const { createLaunchEnvironmentSnapshot } = await import('@deepseek-ai/dsh-launch-environment');
   const { runProfile } = await import('@deepseek-ai/dsh/profile-boot');
@@ -102,10 +118,10 @@ try {
   if (unauthorized.status !== 403) throw new Error('OwnDsh local API admitted an unauthenticated request');
   const authorized = await fetch(statusUrl, { headers: { cookie: cookie.split(';', 1)[0] } });
   if (!authorized.ok || (await authorized.json()).data.bundleVersion !== '0.1.0-beta.22') throw new Error('OwnDsh authenticated local API is unavailable');
-  await publish({ phase: 'ready', origin, cookie, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22', nativeStorage: 'flock+renameat2', pid: process.pid });
+  await publish({ phase: 'ready', origin, cookie, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22', nativeStorage, pid: process.pid });
   process.stderr.write(`OWNDSH_READY ${JSON.stringify({ generation, origin, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22' })}\n`);
 } catch (error) {
-  process.stderr.write(`${error.stack ?? error}\n`);
-  await publish({ phase: 'failed', reason: String(error.message ?? error) });
+  process.stderr.write('OWNDSH_FAILED runtime initialization failed\n');
+  await publish({ phase: 'failed', reason: 'runtime initialization failed' });
   setTimeout(() => process.exit(1), 1500);
 }

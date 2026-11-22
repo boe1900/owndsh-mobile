@@ -1,0 +1,70 @@
+# [INPUT]: 提交的Xcode工程、锁定Node/NSH、共享npm lock与无签名构建入口
+# [OUTPUT]: 设备archive/模拟器app、真实运行报告、截图和SHA256；不发布
+# [POS]: iOS编译与Simulator真实能力门，保持Android签名/发行独立
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+name: iOS build and runtime
+
+on:
+  pull_request:
+  push:
+    branches: [main, codex/ios-shared-implementation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.13.0
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - name: Check arm64 and pinned Xcode
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          echo "TOOLS=$RUNNER_TEMP/owndsh-ios-tools" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/owndsh-ios-tools/*.archive
+          key: ios-macos-arm64-${{ hashFiles('versions.json') }}
+      - name: Fetch pinned vendors
+        run: python3 scripts/fetch-vendors.py "$TOOLS" --platform ios
+      - name: Build both platform slices and audit actual bundles
+        run: |
+          python3 scripts/build-ios.py --tools "$TOOLS" --node "$(command -v node)" \
+            --build-number "$GITHUB_RUN_NUMBER" --build-attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Launch real Simulator and verify runtime recovery
+        run: |
+          python3 scripts/verify-ios.py \
+            --app build/ios/derived-simulator/Build/Products/Debug-iphonesimulator/OwnDsh.app \
+            --platform simulator --metadata build/ios/build-info.json \
+            --output build/ios/runtime-report.json --runtime
+      - name: Upload unsigned builds and sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: owndsh-mobile-ios-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build/ios/owndsh-mobile-*.zip
+            build/ios/SHA256SUMS
+            build/ios/build-info.json
+            build/ios/*-report.json
+            build/ios/excluded-native.json
+            build/ios/simulator.png
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

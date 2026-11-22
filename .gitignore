@@ -1,7 +1,7 @@
 # 构建产物与依赖
 /build/
 node_modules/
-/android/local.properties
+/platforms/android/local.properties
 /shell/.nsh/
 __pycache__/
 *.pyc
