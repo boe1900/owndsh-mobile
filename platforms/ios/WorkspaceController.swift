@@ -22,6 +22,8 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     private var history: [String] = []
     private var committed = false
     private var pageExpired = false
+    private var deadline = PageLoadDeadline()
+    private var timeout: DispatchWorkItem?
     private var browser: SFSafariViewController?
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -52,7 +54,10 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     }
     private func load(_ value: EngineOwner.Ready) {
         guard owner.acceptsPage(generation: value.generation) else { return }
-        if pageGeneration == value.generation, committed, web?.url != nil { return }
+        if pageGeneration == value.generation, committed, !pageExpired, web?.url != nil {
+            owner.pageCommitted(epoch: pageEpoch)
+            return
+        }
         rebuild(value)
     }
     private func rebuild(_ value: EngineOwner.Ready) {
@@ -78,10 +83,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         page.allowsBackForwardNavigationGestures = true
         view.insertSubview(page, belowSubview: shell)
         NSLayoutConstraint.activate([page.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor), page.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor), page.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), page.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self, weak page] in
-            guard let self, let page, self.web === page, self.pageEpoch == epoch, self.owner.acceptsPage(generation: value.generation), !self.committed, !self.pageExpired else { return }
-            self.interrupt()
-        }
+        arm(deadline.beginCookies(now: ProcessInfo.processInfo.systemUptime))
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": value.cookie], for: value.origin)
         guard !cookies.isEmpty else { interrupt(); return }
         let group = DispatchGroup()
@@ -98,9 +100,25 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     private func current(_ page: WKWebView, _ candidate: WKNavigation?) -> Bool {
         page === web && owner.acceptsPage(generation: pageGeneration) && !pageExpired && candidate === navigation
     }
+    private func arm(_ ticket: PageLoadDeadline.Ticket) {
+        timeout?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.owner.acceptsPage(generation: self.pageGeneration), !self.pageExpired,
+                  self.deadline.expired(ticket, now: ProcessInfo.processInfo.systemUptime) else { return }
+            self.interrupt()
+        }
+        timeout = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, ticket.expiresAt - ProcessInfo.processInfo.systemUptime), execute: item)
+    }
+    private func finishDeadline() {
+        timeout?.cancel()
+        timeout = nil
+        deadline.finish()
+    }
     private func interrupt(http: Bool = false) {
         guard !pageExpired else { return }
         pageExpired = true
+        finishDeadline()
         owner.pageFailed(http: http)
     }
     private func sameOrigin(_ url: URL) -> Bool {
@@ -130,13 +148,15 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         }
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired else { return }
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired, let navigation else { return }
         self.navigation = navigation
         committed = false
+        arm(deadline.beginNavigation(ObjectIdentifier(navigation), now: ProcessInfo.processInfo.systemUptime))
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         guard current(webView, navigation) else { return }
         committed = true
+        finishDeadline()
         shell.isHidden = true
         owner.pageCommitted(epoch: pageEpoch)
     }
@@ -178,6 +198,11 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     }
     @objc private func edgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended, let page = web else { return }
+        if pageExpired {
+            let previous = page.backForwardList.backItem.flatMap { relativeTarget($0.url) } ?? history.popLast()
+            if let previous, let value = owner.ready { target = previous; rebuild(value) }
+            return
+        }
         if page.canGoBack { page.goBack(); return }
         if let previous = history.popLast(), let value = owner.ready { target = previous; rebuild(value) }
     }

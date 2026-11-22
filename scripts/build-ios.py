@@ -87,7 +87,7 @@ for sdk, slice_name in [('iphoneos', 'ios-arm64'), ('iphonesimulator', 'ios-arm6
 flock_xc = vendors / 'OwnDshFlock.xcframework'
 if flock_xc.exists(): shutil.rmtree(flock_xc)
 run(['xcodebuild', '-create-xcframework', *frameworks, '-output', flock_xc])
-run(['xcrun', 'swiftc', ROOT / 'platforms/ios/RecoveryPolicy.swift', ROOT / 'platforms/ios/RecoveryPolicyTests.swift', '-o', ios / 'recovery-policy-tests'])
+run(['xcrun', 'swiftc', ROOT / 'platforms/ios/RecoveryPolicy.swift', ROOT / 'platforms/ios/PageLoadDeadline.swift', ROOT / 'platforms/ios/RecoveryPolicyTests.swift', '-o', ios / 'recovery-policy-tests'])
 run([ios / 'recovery-policy-tests'])
 project = ROOT / 'platforms/ios/OwnDsh.xcodeproj'
 settings = [f"MARKETING_VERSION={info['marketing_version']}", f"CURRENT_PROJECT_VERSION={info['bundle_version']}", 'CODE_SIGNING_ALLOWED=NO', 'ARCHS=arm64']

@@ -96,3 +96,5 @@ python3 scripts/verify-ios.py \
 Swift EngineOwner是唯一generation/前后台/退避owner；Node主线程先设置cwd，仅执行单调revision的run/stop，并在旧Worker真正退出后启动下一代。健康Worker随系统挂起，后台取消重试，前台探测健康后复用或恢复。Worker可隔离JS退出；native崩溃/OOM需要下一次真正进程启动恢复，不能再次node_start。
 
 Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。登录用SFSafariViewController保持应用前台并沿用beta.22的HTTP loopback PKCE；owndsh://open仅唤回，不接收授权码。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
+
+Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。
