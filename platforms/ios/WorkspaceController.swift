@@ -160,6 +160,29 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         shell.isHidden = true
         owner.pageCommitted(epoch: pageEpoch)
     }
+    #if DEBUG
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard owner.runtimeTest, current(webView, navigation) else { return }
+        let epoch = pageEpoch
+        webView.callAsyncJavaScript("""
+            for (let attempt = 0; attempt < 300; attempt++) {
+                const root = document.getElementById('root');
+                const textLength = root?.innerText.trim().length ?? 0;
+                const controls = root?.querySelectorAll('button, textarea, input, [role="button"]').length ?? 0;
+                if (textLength > 0 && controls > 0) {
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    return {rendered: true, textLength, controls, width: innerWidth, height: innerHeight};
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            return {rendered: false};
+            """, arguments: [:], in: nil, in: .page) { [weak self, weak webView] result in
+                guard let self, let webView, self.pageEpoch == epoch, self.current(webView, navigation),
+                      case .success(let value) = result, let metrics = value as? [String: Any] else { return }
+                self.owner.pageRendered(epoch: epoch, metrics: metrics)
+            }
+    }
+    #endif
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
         guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired else { decisionHandler(.cancel); return }
         if response.isForMainFrame, let http = response.response as? HTTPURLResponse, http.statusCode >= 400 {
@@ -199,7 +222,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     @objc private func edgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended, let page = web else { return }
         if pageExpired {
-            let previous = page.backForwardList.backItem.flatMap { relativeTarget($0.url) } ?? history.popLast()
+            let previous = history.popLast() ?? page.backForwardList.backItem.flatMap { relativeTarget($0.url) }
             if let previous, let value = owner.ready { target = previous; rebuild(value) }
             return
         }

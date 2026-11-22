@@ -66,7 +66,7 @@ Cookie 写入与首次主文档共享60秒预算，后续每次主文档导航�
 
 锁定制品支持 arm64 iOS 设备和 arm64 Simulator。NSH 最低 iOS 15，NodeMobile 最低 iOS 14，因此应用最低 iOS 15。NSH Swift 接口由 Swift 6.3.3 生成，云端使用 macOS 26 与 Xcode 26.6，避免旧编译器导入失败。
 
-iOS CI 首先验证 framework 加载、Node/Worker、文件锁与 NSH bundle，然后验证完整 WebUI、认证门禁和故障恢复。提交的scripts/build-ios.py生成无签名设备archive与adhoc Simulator app；scripts/verify-ios.py只创建专用Simulator，验证真实WebUI/认证门、私有页面提交报告、Worker故障恢复和锁释放，上传无凭据报告与截图。没有 Apple 签名配置时不把制品描述为可直接安装的 IPA。
+iOS CI 首先验证 framework 加载、Node/Worker、文件锁与 NSH bundle，然后验证完整 WebUI、认证门禁和故障恢复。提交的scripts/build-ios.py生成无签名设备archive与adhoc Simulator app；scripts/verify-ios.py只创建专用Simulator，验证真实WebUI/认证门、主文档提交后root文本与控件实际渲染、Worker故障恢复和锁释放，上传无凭据报告与截图。渲染指标不含页面内容，仅在专用Debug启动参数下采集。没有 Apple 签名配置时不把制品描述为可直接安装的 IPA。
 
 Android 继续执行 NSH 测试、JVM 恢复策略测试、完整 APK 构建、版本/ABI/16K 对齐和既有签名校验。迁移期间不操作包含用户身份的设备。
 

@@ -11,6 +11,6 @@ verify-device.py: 从真实 Android 活进程读取私有状态，验证官方 W
 payload.py: 独立build/<platform>/engine npm安装、确定性载荷、NSH构建与法律文本；按扩展名及格式排除桌面原生文件，不拥有SDK或签名。
 payload_test.py: 覆盖无扩展名 Mach-O/ELF、静态归档与可保留资源的移动载荷准入回归。
 build-ios.py: 校验完整供应商输入、直接编译锁定flock.c，构建arm64双目标并生成无签名archive及Simulator app。
-verify-ios.py: 核验真实bundle版本/切片/依赖/资源，创建专用Simulator实测WebUI、认证门、页面提交与Worker恢复后锁释放；报告不含Cookie。
+verify-ios.py: 核验真实bundle版本/切片/依赖/资源，创建专用Simulator实测WebUI、认证门、主文档提交及root渲染与Worker恢复后锁释放；报告不含Cookie或页面内容。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -97,4 +97,4 @@ Swift EngineOwner是唯一generation/前后台/退避owner；Node主线程先设
 
 Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。登录用SFSafariViewController保持应用前台并沿用beta.22的HTTP loopback PKCE；owndsh://open仅唤回，不接收授权码。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
 
-Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。
+Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。Simulator验收还等待DSH root出现文本和控件、完成动画帧后再截图，渲染报告仅保存数量与尺寸。

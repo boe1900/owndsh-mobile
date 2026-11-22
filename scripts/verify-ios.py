@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # [INPUT]: 实际iOS app、版本元数据或专用Simulator私有容器
-# [OUTPUT]: 无凭据bundle/runtime报告、真实WebUI/403/200/页面提交/Worker恢复与锁释放证据
+# [OUTPUT]: 无凭据bundle/runtime报告、真实WebUI/403/200/页面渲染/Worker恢复与锁释放证据
 # [POS]: iOS产物和运行验收边界；只操作本脚本创建的模拟器，不触碰已有设备
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import argparse, hashlib, json, pathlib, plistlib, re, subprocess, time, urllib.request, urllib.error, uuid, zipfile
@@ -104,6 +104,12 @@ def runtime():
             check(status == 200 and json.loads(body)['data']['bundleVersion'] == '0.1.0-beta.22', 'authenticated API failed')
             page = wait_for(lambda: read_json(run_directory / 'page-state.json'), 'WKWebView did not commit')
             check(page['generation'] == state['generation'] and page['committed'] and page['nodeStarts'] == 1, 'stale native page report')
+            def rendered():
+                value = read_json(run_directory / 'render-state.json')
+                return value if value and value.get('pageEpoch') == page['pageEpoch'] else None
+            rendering = wait_for(rendered, 'WKWebView did not produce rendered content', seconds=45)
+            check(rendering['generation'] == state['generation'] and rendering['metrics']['rendered'], 'DSH root remained blank')
+            report['runtime']['render_metrics'] = rendering['metrics']
             return page
         first_run, first = wait_for(ready, 'engine did not become ready')
         first_page = inspect(first_run, first)
@@ -116,13 +122,14 @@ def runtime():
         inject('rebuild-page', first['generation'])
         rebuilt = wait_for(lambda: (value if (value := read_json(first_run / 'page-state.json')) and value['pageEpoch'] > first_page['pageEpoch'] else None), 'page recovery failed')
         check(rebuilt['generation'] == first['generation'], 'page recovery replaced engine')
+        inspect(first_run, first)
         inject('crash-worker', first['generation'])
         exit_state = wait_for(lambda: read_json(first_run / 'exit.json'), 'old Worker did not exit')
         check(exit_state['generation'] == first['generation'] and exit_state['code'] == 77 and exit_state['lockReleased'] is True, 'Worker lock did not release')
         second_run, second = wait_for(lambda: ready(first['generation']), 'Worker did not recover')
         inspect(second_run, second)
         run(['xcrun', 'simctl', 'io', device, 'screenshot', a.output.parent / 'simulator.png'])
-        report['runtime'].update({'ready': True, 'webui_boot': True, 'anonymous': 403, 'authenticated': 200, 'native_storage': 'flock+link', 'page_commit': True, 'page_rebuild_same_engine': True, 'worker_exit': 77, 'worker_recovery': True, 'lock_released': True, 'node_starts': 1})
+        report['runtime'].update({'ready': True, 'webui_boot': True, 'anonymous': 403, 'authenticated': 200, 'native_storage': 'flock+link', 'page_commit': True, 'page_rendered': True, 'page_rebuild_same_engine': True, 'worker_exit': 77, 'worker_recovery': True, 'lock_released': True, 'node_starts': 1})
     finally:
         subprocess.run(['xcrun', 'simctl', 'shutdown', device], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(['xcrun', 'simctl', 'delete', device], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

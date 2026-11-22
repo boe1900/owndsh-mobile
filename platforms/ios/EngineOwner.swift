@@ -1,6 +1,6 @@
 /**
  * [INPUT]: NodeMobile C入口、私有 RuntimeConfig/state/browser 文件与 UIKit 前后台
- * [OUTPUT]: 单次 Node启动、唯一代次/恢复任务、已验证 ready 与当前代浏览器请求
+ * [OUTPUT]: 单次 Node启动、唯一代次/恢复任务、已验证 ready、浏览器请求与无内容Debug渲染证据
  * [POS]: iOS 引擎唯一 owner；supervisor 仅串行替换 Worker，页面由 WorkspaceController 持有
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -37,7 +37,7 @@ final class EngineOwner {
     private var policy = RecoveryPolicy()
     private var lastState = ""
     private var lastTestCommand = ""
-    private var runtimeTest: Bool {
+    var runtimeTest: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-owndsh-runtime-test")
         #else
@@ -234,6 +234,10 @@ final class EngineOwner {
         }
     }
     #if DEBUG
+    func pageRendered(epoch: Int, metrics: [String: Any]) {
+        guard runtimeTest, acceptsPage(generation: generation), let run = runDirectory else { return }
+        try? RuntimeFiles.write(["generation": generation, "pageEpoch": epoch, "metrics": metrics], to: run.appendingPathComponent("render-state.json"))
+    }
     private func injectTestCommand() {
         guard let value = RuntimeFiles.read(RuntimeFiles.control.appendingPathComponent("test-command.json")), value["generation"] as? String == generation,
               let id = value["id"] as? String, id != lastTestCommand else { return }
