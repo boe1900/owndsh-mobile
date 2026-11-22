@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖官方 nsh host.call/on 与 Android 提供的无凭据加载阶段
+ * [INPUT]: 依赖官方 nsh host.call/on 与 平台宿主提供的无凭据加载阶段
  * [OUTPUT]: 只读全屏启动/恢复说明，不提供运行时操作，也不接收端口、凭据或内部错误
- * [POS]: mobile NSH 加载遮罩，真实 DSH 主页面提交后由 Activity 隐藏
+ * [POS]: mobile NSH 加载遮罩，真实 DSH 主页面提交后由平台页面owner隐藏
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { mount, signal, Text, View, host } from "nsh";

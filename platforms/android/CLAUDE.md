@@ -1,4 +1,4 @@
-# android/
+# platforms/android/
 > L2 | 父级: ../CLAUDE.md
 
 成员清单

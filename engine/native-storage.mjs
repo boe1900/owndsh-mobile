@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 APK 内官方 flock Node-API 库、Android 原子发布原语及 Node fs
+ * [INPUT]: 依赖 宿主显式配置的官方 flock Node-API 库与原子发布原语及 Node fs
  * [OUTPUT]: 提供不覆盖发布适配，并实测锁争用/释放和发布冲突后字节不变
  * [POS]: mobile 持久化系统调用边界；不替代 DSH SessionWriteLease、JSONL 或 fs 授权语义
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -8,15 +8,27 @@ import { link, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getSystemErrorName } from 'node:util';
 import assert from 'node:assert/strict';
+let publication;
 let binding;
+export function configureNativeStorage(config) {
+  if (publication) throw new Error('Native storage already configured');
+  const flock = { exports: {} };
+  process.dlopen(flock, config.flockPath);
+  globalThis[Symbol.for('owndsh.mobile.flockBinding')] = flock.exports;
+  publication = config.publication;
+  if (publication === 'renameat2') {
+    const module = { exports: {} };
+    process.dlopen(module, config.publishPath);
+    binding = module.exports;
+  }
+}
 export async function publishExclusive(source, target) {
-  if (process.platform !== 'android') return link(source, target);
-  if (!binding) { const module = { exports: {} }; process.dlopen(module, 'libowndsh_fs.so'); binding = module.exports; }
+  if (!publication) throw new Error('Native storage is not configured');
+  if (publication === 'link') return link(source, target);
   const errno = binding.publishExclusive(source, target);
   if (errno) throw Object.assign(new Error(`${getSystemErrorName(-errno)}: atomic publication failed`), { code: getSystemErrorName(-errno), errno, syscall: 'renameat2' });
 }
 export async function verifyNativeStorage(directory) {
-  if (process.platform !== 'android') return;
   const { tryLockExclusive } = await import('@deepseek-ai/node-addon-system/flock');
   const test = await mkdtemp(join(directory, 'storage-'));
   try {
@@ -35,4 +47,5 @@ export async function verifyNativeStorage(directory) {
     assert.equal(await readFile(join(test, 'published'), 'utf8'), 'first');
     assert.equal(await readFile(join(test, 'second'), 'utf8'), 'second');
   } finally { await rm(test, { recursive: true, force: true }); }
+  return `flock+${publication}`;
 }

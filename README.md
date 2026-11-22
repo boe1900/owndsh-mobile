@@ -2,7 +2,7 @@
 
 [手机端仓库](https://github.com/boe1900/owndsh-mobile) · [OwnDsh 服务端与插件](https://github.com/boe1900/owndsh) · [桌面客户端](https://github.com/boe1900/owndsh-desktop)
 
-手机内运行真实 DSH `0.2.2-rc.5` + `owndsh-plugin@0.1.0-beta.22`。NSH `0.6.1` 呈现全屏加载遮罩，官方 WebUI 运行在自有 Android WebView。Node 来自 digidem Node Mobile `24.20.0-0`；不包含 Ubuntu、Fish 或 DshGo 代码。
+手机内运行真实 DSH `0.2.2-rc.5` + `owndsh-plugin@0.1.0-beta.22`。NSH `0.6.1` 呈现全屏加载遮罩，官方WebUI运行在Android WebView或iOS WKWebView。Node 来自 digidem Node Mobile `24.20.0-0`；不包含 Ubuntu、Fish 或 DshGo 代码。
 
 首版目标是 Android 9+ arm64。实际设备验收记录以 API35 arm64 模拟器为准，Android 9 真机尚未覆盖。Java/SDK 构建基线为 JDK17、compile/target35、build-tools35.0.0、NDK r27b；当前脚本运行于 macOS arm64。
 
@@ -62,7 +62,7 @@ DSH占满可用屏幕，保留系统栏安全区域与adjustResize键盘行为�
 
 ```sh
 mkdir -p /tmp/owndsh-recovery-test
-javac -d /tmp/owndsh-recovery-test android/src/com/owndsh/mobile/RecoveryPolicy.java android/RecoveryPolicyTest.java
+javac -d /tmp/owndsh-recovery-test platforms/android/src/com/owndsh/mobile/RecoveryPolicy.java platforms/android/RecoveryPolicyTest.java
 java -cp /tmp/owndsh-recovery-test com.owndsh.mobile.RecoveryPolicyTest
 ```
 
@@ -72,4 +72,29 @@ java -cp /tmp/owndsh-recovery-test com.owndsh.mobile.RecoveryPolicyTest
 
 Android 不提供上游 Node builtin addon 的预编译包，因此启动使用 Node 官方 `--expose-internals`，只替换该 addon 的取内部模块入口，保留官方 loader。Android 私有目录禁止 hardlink；安装身份、JSONL 发布和文件 create-if-absent 通过 `renameat2(RENAME_NOREPLACE)` 保留原子且不覆盖的语义，官方 flock/JSONL/fsync/错误算法不变。所有适配均受源码 SHA256 与精确文本边界约束，上游变更会使构建失败。
 
-跨平台复用边界是 `engine/` 的 profile、工具协议与 JavaScript 载荷。iOS 的宿主、签名和生命周期需独立实现；此目录不含空 iOS 模块。
+共享核心为engine/和shell/；系统适配集中在platforms/android/与platforms/ios/，详见architecture.md。
+
+
+## iOS构建与验收
+
+iOS最低15.0，仅arm64设备与arm64 Simulator。使用锁定的Xcode26.6（Swift6.3.3）与官方NodeMobile/NativeShell xcframework；NSH为静态链接，NodeMobile和从锁定npm上游flock.c编译的OwnDshFlock为嵌入动态framework。不使用XcodeGen，不复制Fish Pocket/DshGo源码。
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+python3 scripts/fetch-vendors.py /tmp/owndsh-ios-tools --platform ios
+python3 scripts/build-ios.py --tools /tmp/owndsh-ios-tools --node "$(command -v node)"
+python3 scripts/verify-ios.py \
+  --app build/ios/derived-simulator/Build/Products/Debug-iphonesimulator/OwnDsh.app \
+  --platform simulator --metadata build/ios/build-info.json \
+  --output build/ios/runtime-report.json --runtime
+```
+
+构建只在build/ios/engine安装npm依赖，不改源码node_modules。`--prepare-only`可在无完整Xcode的macOS上审计与准备载荷，它不代表iOS编译或运行成功。app的CFBundleShortVersionString使用appVersion，CFBundleVersion复用构建编号×1000+重试编号；下载名保留同一dev版本语义。
+
+[iOS Actions](https://github.com/boe1900/owndsh-mobile/actions/workflows/ios.yml)执行双目标构建，实际启动专用模拟器，验证WebUI启动标记、匿名403/认证200、native flock/link、WKWebView主文档提交、一次Node入口、Worker失败后恢复与锁释放。Debug注入仅通过专用启动参数和私有容器文件使用，无产品按钮或HTTP控制端点。验收器不操作已有Simulator。上传无凭据报告、截图、SHA256、Simulator app ZIP与无签名设备xcarchive ZIP；没有签名团队/provisioning时不产出可安装IPA。
+
+Swift EngineOwner是唯一generation/前后台/退避owner；Node主线程先设置cwd，仅执行单调revision的run/stop，并在旧Worker真正退出后启动下一代。健康Worker随系统挂起，后台取消重试，前台探测健康后复用或恢复。Worker可隔离JS退出；native崩溃/OOM需要下一次真正进程启动恢复，不能再次node_start。
+
+Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。登录用SFSafariViewController保持应用前台并沿用beta.22的HTTP loopback PKCE；owndsh://open仅唤回，不接收授权码。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
+
+Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。Simulator验收还等待DSH root出现文本和控件、完成动画帧后再截图，渲染报告仅保存数量与尺寸。

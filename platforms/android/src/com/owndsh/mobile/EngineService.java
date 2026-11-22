@@ -68,7 +68,9 @@ public final class EngineService extends Service {
                 workspace.mkdirs();
                 File config = new File(runDirectory, "config.json");
                 write(config, new JSONObject().put("generation", generation).put("runDirectory", runDirectory.getPath())
-                        .put("home", home.getPath()).put("workspace", workspace.getPath()).toString());
+                        .put("home", home.getPath()).put("workspace", workspace.getPath())
+                        .put("native", new JSONObject().put("flockPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_flock.so")
+                                .put("publication", "renameat2").put("publishPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_fs.so")).toString());
                 main.post(this::poll);
                 int code = NodeBridge.start(new File(engine, "bootstrap.mjs").getPath(), config.getPath(), home.getPath());
                 main.post(() -> fail("Node exited with status " + code));
@@ -111,13 +113,14 @@ public final class EngineService extends Service {
             if (requests != null) for (File request : requests) {
                 JSONObject event = new JSONObject(new String(Files.readAllBytes(request.toPath()), StandardCharsets.UTF_8));
                 String id = event.getString("id");
+                if (!id.matches("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}") || !request.getName().equals("browser-" + id + ".request")) continue;
                 if (generation.equals(event.optString("generation")) && browserRequests.add(id)) {
                     if (event.optString("kind").equals("device-info")) {
                         Intent battery = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
                         int level = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
                         int scale = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
                         int status = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-                        JSONObject info = new JSONObject().put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
+                        JSONObject info = new JSONObject().put("platform", "android").put("osVersion", Build.VERSION.RELEASE).put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
                                 .put("androidVersion", Build.VERSION.RELEASE).put("apiLevel", Build.VERSION.SDK_INT)
                                 .put("batteryPercent", level < 0 || scale <= 0 ? -1 : level * 100 / scale)
                                 .put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL);
@@ -188,6 +191,7 @@ public final class EngineService extends Service {
     private static void write(File target, String value) throws IOException {
         File temporary = new File(target.getPath() + ".tmp");
         Files.write(temporary.toPath(), value.getBytes(StandardCharsets.UTF_8));
+        Files.setPosixFilePermissions(temporary.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
         if (!temporary.renameTo(target)) throw new IOException("Cannot publish engine event");
     }
     @Override public void onDestroy() {
