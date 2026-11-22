@@ -103,7 +103,7 @@ def main():
         'MinimumOSVersion': '15.0', 'CFBundleSupportedPlatforms': ['iPhoneSimulator'],
         'UIDeviceFamily': [1, 2], 'LSRequiresIPhoneOS': True,
     })
-    scripts = APP / 'probe'
+    scripts = APP / 'runtime'
     scripts.mkdir()
     for filename in ['main.cjs', 'worker.cjs']:
         shutil.copy2(SOURCE / filename, scripts / filename)

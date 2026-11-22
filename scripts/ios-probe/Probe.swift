@@ -25,7 +25,7 @@ final class ProbeDelegate: UIResponder, UIApplicationDelegate {
 
         precondition(!Self.started)
         Self.started = true
-        let script = Bundle.main.path(forResource: "main", ofType: "cjs", inDirectory: "probe")!
+        let script = Bundle.main.path(forResource: "main", ofType: "cjs", inDirectory: "runtime")!
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
         let addon = Bundle.main.privateFrameworksPath! + "/OwnDshFlock.framework/OwnDshFlock"
         Thread.detachNewThread {
