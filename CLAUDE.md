@@ -15,6 +15,7 @@ licenses/ - NSH、Node Mobile 与 NDK 法律声明，npm 包 LICENSE 随 engine.
 AGENTS.md - 协作规范与 GEB 文档维护协议
 README.md - 独立仓库构建、设备验收和能力边界
 lifecycle-design.md - 生命周期所有权、上游方案取舍和远端页面恢复边界
+architecture.md - 共享核心与 Android/iOS 适配的目标结构、所有权、协议及验收契约
 versions.json - appVersion 基础版本与原生工具链、运行时版本、下载 URL 和 SHA256 的唯一锁定入口
 .gitignore - 隔离构建缓存、依赖、运行状态、凭据和签名密钥
 .gitattributes - 文本文件换行约定，第三方法律文本保留原始字节与空白
