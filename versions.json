@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "appVersion": "0.1.0",
   "nsh": "0.6.1",
   "nodeMobile": "24.20.0-0",
   "harness": "0.2.2-rc.5",

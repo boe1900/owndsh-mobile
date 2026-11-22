@@ -15,7 +15,7 @@ licenses/ - NSH、Node Mobile 与 NDK 法律声明，npm 包 LICENSE 随 engine.
 AGENTS.md - 协作规范与 GEB 文档维护协议
 README.md - 独立仓库构建、设备验收和能力边界
 lifecycle-design.md - 生命周期所有权、上游方案取舍和远端页面恢复边界
-versions.json - 原生工具链与运行时精确版本、下载 URL 和 SHA256 的唯一锁定入口
+versions.json - appVersion 基础版本与原生工具链、运行时版本、下载 URL 和 SHA256 的唯一锁定入口
 .gitignore - 隔离构建缓存、依赖、运行状态、凭据和签名密钥
 .gitattributes - 文本文件换行约定，第三方法律文本保留原始字节与空白
 </config>
@@ -23,6 +23,8 @@ versions.json - 原生工具链与运行时精确版本、下载 URL 和 SHA256 
 本仓库独立于 OwnDsh 服务端和桌面仓库构建。Android 首版目标为 Android 9+ arm64，固定工具下载与构建脚本当前仅覆盖 macOS arm64。iOS 宿主、签名和生命周期尚未实现。
 
 Android 启动图标沿用 OwnDsh 黑底白鲸，res 提供自适应、单色与密度回退资源。main 提交和手动 Actions 运行复用同一锁定构建入口；测试签名由仓库加密 secret 提供，APK 的 ABI、16K 对齐和证书验证成功后才上传和发布。测试版使用唯一 tag 指向构建源码，不移动既有 tag。
+
+应用版本由 appVersion 与构建/重试编号在 build.py 中统一生成，注入 APK 并校验实际 manifest；文件名、SHA256、artifact 与 Release 消费同一 build-info.json，不在 workflow 复制版本公式。versionCode 按构建编号 × 1000 + 重试编号递增，保持同签名更新兼容。
 
 Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity 持有绑定、页面与唯一恢复计时器，以绑定、generation 和页面代次拒绝迟到结果。系统浏览器登录保留健康绑定，Activity 销毁或后台窗口到期终止引擎；前台故障自动退避恢复，后台不循环重启。
 

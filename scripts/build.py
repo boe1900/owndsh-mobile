@@ -1,21 +1,41 @@
 #!/usr/bin/env python3
-# [INPUT]: 固定 versions.json、npm package-lock、经档案核验的 Android SDK/NDK、JDK、官方 NSH AAR 与 android/res 图标资源
-# [OUTPUT]: 通过真实恢复策略与 NSH 回归后生成可安装 arm64 APK、依赖二进制审计清单及 SHA256
+# [INPUT]: versions.json 基础版本与工具锁、构建编号、npm lock、经核验的 Android SDK/NDK、JDK、NSH AAR 和图标资源
+# [OUTPUT]: 内部版本与文件名一致的 arm64 APK、SHA256、build-info.json 和依赖二进制审计清单
 # [POS]: mobile 可复现构建入口；生成资产仅写 build/，直接使用 Android 官方工具避免隐式 Gradle 下载
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
-import argparse, hashlib, json, os, pathlib, shutil, subprocess, zipfile, tarfile
+import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, zipfile, tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--tools', required=True, type=pathlib.Path)
 parser.add_argument('--jdk', required=True, type=pathlib.Path)
 parser.add_argument('--node', default='node')
+parser.add_argument('--build-number', type=int, default=0)
+parser.add_argument('--build-attempt', type=int, default=1)
 parser.add_argument('--skip-install', action='store_true', help='只供本机迭代；发布验证必须使用干净 npm ci')
 args = parser.parse_args()
+lock = json.loads((ROOT / 'versions.json').read_text())
+app_version = lock['appVersion']
+if not isinstance(app_version, str) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', app_version):
+    parser.error('appVersion must use X.Y.Z with non-negative integer components')
+if args.build_number < 0 or not 1 <= args.build_attempt <= 999:
+    parser.error('--build-number must be non-negative and --build-attempt must be between 1 and 999')
+version_code = args.build_number * 1000 + args.build_attempt
+if version_code > 2100000000:
+    parser.error('Android versionCode must not exceed 2100000000')
+version_name = f'{app_version}-dev.{args.build_number}.{args.build_attempt}'
+artifact_name = f'owndsh-mobile-v{version_name}-android-arm64'
+build_info = {
+    'version_name': version_name,
+    'version_code': version_code,
+    'apk_name': artifact_name + '.apk',
+    'checksum_name': artifact_name + '.apk.sha256',
+    'artifact_name': artifact_name,
+    'release_tag': 'v' + version_name,
+}
 resolved_node = shutil.which(args.node)
 if not resolved_node: raise SystemExit('Node executable not found: ' + args.node)
 args.node = str(pathlib.Path(resolved_node).resolve())
-lock = json.loads((ROOT / 'versions.json').read_text())
 tools = args.tools.resolve()
 build = ROOT / 'build'
 build.mkdir(exist_ok=True)
@@ -126,7 +146,7 @@ unsigned = build / 'owndsh-unsigned.apk'
 resources = build / 'resources.zip'
 resource_files = sorted(path for path in (ROOT / 'android/res').rglob('*') if path.suffix in ('.xml', '.png'))
 run([bt / 'aapt2', 'compile', '-o', resources, *resource_files])
-run([bt / 'aapt2', 'link', '--manifest', ROOT / 'android/AndroidManifest.xml', '-I', android, '-R', resources, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
+run([bt / 'aapt2', 'link', '--manifest', ROOT / 'android/AndroidManifest.xml', '--version-code', version_code, '--version-name', version_name, '-I', android, '-R', resources, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
 with zipfile.ZipFile(unsigned, 'a') as archive:
     for path in sorted(dex.glob('*.dex')): archive.write(path, path.name, compress_type=zipfile.ZIP_DEFLATED)
     for path in sorted(libs.glob('*.so')): archive.write(path, 'lib/arm64-v8a/' + path.name, compress_type=zipfile.ZIP_STORED)
@@ -135,7 +155,10 @@ run([bt / 'zipalign', '-f', '-P', '16', '4', unsigned, aligned])
 key = build / 'debug.keystore'
 if not key.exists():
     run([args.jdk / 'bin/keytool', '-genkeypair', '-keystore', key, '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Android Debug,O=OwnDsh,C=CN'])
-apk = build / 'owndsh-debug.apk'
+apk = build / build_info['apk_name']
 run([bt / 'apksigner', 'sign', '--ks', key, '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned])
-run(['python3', ROOT / 'scripts/verify-apk.py', '--tools', tools, apk])
-print('APK:', apk, '\nSHA256:', digest(apk), flush=True)
+run(['python3', ROOT / 'scripts/verify-apk.py', '--tools', tools, '--version-name', version_name, '--version-code', version_code, apk])
+build_info['sha256'] = digest(apk)
+(build / build_info['checksum_name']).write_text(f"{build_info['sha256']}  {apk.name}\n")
+(build / 'build-info.json').write_text(json.dumps(build_info, indent=2) + '\n')
+print('APK:', apk, '\nVersion:', version_name, '\nVersion code:', version_code, '\nSHA256:', build_info['sha256'], flush=True)

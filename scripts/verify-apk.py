@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-# [INPUT]: 最终 APK 与锁定 Android NDK/build-tools
-# [OUTPUT]: 实际每个 ELF LOAD/NEEDED、16K ZIP 对齐与签名验证
+# [INPUT]: 最终 APK、锁定 Android NDK/build-tools 与可选的预期应用版本
+# [OUTPUT]: 实际 APK 版本、每个 ELF LOAD/NEEDED、16K ZIP 对齐与签名验证
 # [POS]: mobile 制品验收入口；不以编译或文件存在替代真实 APK 检验
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import argparse, json, pathlib, re, subprocess, tempfile, zipfile
-p = argparse.ArgumentParser(); p.add_argument('--tools', required=True, type=pathlib.Path); p.add_argument('apk', type=pathlib.Path); a = p.parse_args()
+p = argparse.ArgumentParser()
+p.add_argument('--tools', required=True, type=pathlib.Path)
+p.add_argument('--version-name')
+p.add_argument('--version-code', type=int)
+p.add_argument('apk', type=pathlib.Path)
+a = p.parse_args()
 root = pathlib.Path(__file__).resolve().parents[1]
 lock = json.loads((root / 'versions.json').read_text())
 sdk = a.tools / 'sdk'
 bt = sdk / 'build-tools' / lock['android']['buildTools']
+badging = subprocess.check_output([bt / 'aapt2', 'dump', 'badging', a.apk], text=True)
+version_name = re.search(r"versionName='([^']+)'", badging).group(1)
+version_code = int(re.search(r"versionCode='([0-9]+)'", badging).group(1))
+if a.version_name is not None and version_name != a.version_name:
+    raise SystemExit(f'APK versionName differs: {version_name} != {a.version_name}')
+if a.version_code is not None and version_code != a.version_code:
+    raise SystemExit(f'APK versionCode differs: {version_code} != {a.version_code}')
+print('Verified Android version:', version_name, 'versionCode:', version_code)
 readelf = sdk / 'ndk' / lock['android']['ndk'] / 'toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf'
 with tempfile.TemporaryDirectory() as temp, zipfile.ZipFile(a.apk) as apk:
     libraries = [name for name in apk.namelist() if name.endswith('.so')]

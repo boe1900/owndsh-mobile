@@ -8,9 +8,11 @@
 
 ## 从 GitHub 下载
 
-在手机打开 [Releases](https://github.com/boe1900/owndsh-mobile/releases)，进入最新的 **Android test build**，下载 **owndsh-debug.apk** 并打开安装。应用使用与桌面端一致的黑底白鲸图标，支持自适应形状和 Android 13 主题图标。
+在手机打开 [Releases](https://github.com/boe1900/owndsh-mobile/releases)，进入最新的 **OwnDsh Mobile** 测试版，下载 `owndsh-mobile-v<版本>-android-arm64.apk` 并打开安装。应用使用与桌面端一致的黑底白鲸图标，支持自适应形状和 Android 13 主题图标。
 
-main 每次提交自动构建并发布测试预览版。维护者也可打开 [Android APK Actions](https://github.com/boe1900/owndsh-mobile/actions/workflows/android.yml)，选择 **Run workflow → main** 手动构建。运行成功后可从 **Artifacts → owndsh-android-arm64** 下载 ZIP，其中包含 APK 和对应 SHA256；artifact 保留 30 天，Release 资产单独保留。
+main 每次提交自动构建并发布测试预览版。维护者也可打开 [Android APK Actions](https://github.com/boe1900/owndsh-mobile/actions/workflows/android.yml)，选择 **Run workflow → main** 手动构建。运行成功后可从 **Artifacts** 下载同名 ZIP，其中包含 APK、对应 SHA256 和 `build-info.json`；artifact 保留 30 天，Release 资产单独保留。
+
+版本由 `versions.json` 的 `appVersion`、Actions 构建编号和重试编号组成。例如基础版本 `0.1.0` 的第 2 次构建、第 1 次尝试生成 `owndsh-mobile-v0.1.0-dev.2.1-android-arm64.apk`，应用内部版本同为 `0.1.0-dev.2.1`，Release 标签为 `v0.1.0-dev.2.1`。Android `versionCode` 为构建编号 × 1000 + 重试编号，该例为 `2001`，后续构建可覆盖旧版。旧 Release 保留。
 
 云端构建使用仓库加密 secret `ANDROID_DEBUG_KEYSTORE_BASE64` 中的现有测试签名，并校验固定证书，保持已安装验证包的覆盖兼容性。维护者配置 secret 时使用现有 `build/debug.keystore` 的单行 Base64，保留该原始密钥；缺少 secret 会使构建失败。签名密钥不进入 Git、缓存或下载产物。
 
@@ -28,7 +30,9 @@ python3 scripts/build.py \
   --node "$(command -v node)"
 ```
 
-最终 APK 为 `build/owndsh-debug.apk`。这是测试签名的验证包，不是商店发行。首次本机构建会在 `build/debug.keystore` 生成测试密钥；后续复用该文件，若要覆盖云端安装包需使用仓库配置的同一密钥。`--skip-install` 只用于本机迭代；正式验证必须走默认的干净 `npm ci`。
+最终 APK 为 `build/owndsh-mobile-v<版本>-android-arm64.apk`，实际文件名、内部版本、SHA256 和 Release 标签统一记录于 `build/build-info.json`。本地默认构建编号为 `0`、重试编号为 `1`；可用 `--build-number N --build-attempt M` 指定，重试编号范围为 `1..999`，最终 `versionCode` 不超过 Android 上限 `2100000000`。
+
+这是测试签名的验证包，不是商店发行。首次本机构建会在 `build/debug.keystore` 生成测试密钥；后续复用该文件。若要覆盖云端安装包，使用仓库配置的同一密钥，以及不低于已安装版本的构建编号。`--skip-install` 只用于本机迭代；正式验证必须走默认的干净 `npm ci`。
 
 构建使用官方 aapt2/javac/d8/NDK，直接消费官方 NSH AAR。SDK 别名必须指向已逐文件核验的供应商目录。产物包含 libnode、libnsh、libc++、JNI bridge、官方 `node-addon-system` 的 flock C 源码交叉编译产物和自有原子发布原语。脚本核对所有 ELF 的 ARM64、16K LOAD、动态库闭包、APK ZIP16K 对齐和签名。ZIP 对齐不代替 ELF 对齐。
 
@@ -37,7 +41,8 @@ python3 scripts/build.py \
 使用 Android SDK 的 `adb` 安装和启动：
 
 ```sh
-adb install --no-incremental -r build/owndsh-debug.apk
+APK="$(python3 -c 'import json; print("build/" + json.load(open("build/build-info.json"))["apk_name"])')"
+adb install --no-incremental -r "$APK"
 adb shell am start -n com.owndsh.mobile/.MainActivity
 python3 scripts/verify-device.py --adb /path/to/adb --output build/device-verification.json
 /tmp/owndsh-android-build-tools/nsh-cli/nsh/bin/nsh test shell
