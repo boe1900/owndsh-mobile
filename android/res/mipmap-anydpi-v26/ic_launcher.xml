@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+[INPUT]: 黑色背景与保留安全边距的白鲸前景。
+[OUTPUT]: Android 8+ 可随启动器形状裁剪的应用图标。
+[POS]: 启动图标的自适应配置，覆盖密度位图回退。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@android:color/black" />
+  <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

@@ -3,6 +3,7 @@
 Java 17 + Android WebView + NSH 0.6.1 + digidem Node Mobile 24.20.0-0 + DSH 0.2.2-rc.5 + owndsh-plugin 0.1.0-beta.22
 
 <directory>
+.github/ - Android 自动构建、30 天下载产物与按源码提交发布的测试版 APK
 android/ - Activity 管理全屏页面与恢复，私有独立 Service 唯一持有 Node，JNI 只适配进程入口和原子文件发布
 engine/ - 锁定 npm 载荷，复用官方 profile、PKCE、模型和 JSONL，通过 Android 接缝提供文本工作区与只读设备工具
 shell/ - NSH 全屏只读加载遮罩，仅接收无凭据阶段与 runtime.status，主页面提交后隐藏
@@ -20,6 +21,8 @@ versions.json - 原生工具链与运行时精确版本、下载 URL 和 SHA256 
 </config>
 
 本仓库独立于 OwnDsh 服务端和桌面仓库构建。Android 首版目标为 Android 9+ arm64，固定工具下载与构建脚本当前仅覆盖 macOS arm64。iOS 宿主、签名和生命周期尚未实现。
+
+Android 启动图标沿用 OwnDsh 黑底白鲸，res 提供自适应、单色与密度回退资源。main 提交和手动 Actions 运行复用同一锁定构建入口；测试签名由仓库加密 secret 提供，APK 的 ABI、16K 对齐和证书验证成功后才上传和发布。测试版使用唯一 tag 指向构建源码，不移动既有 tag。
 
 Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity 持有绑定、页面与唯一恢复计时器，以绑定、generation 和页面代次拒绝迟到结果。系统浏览器登录保留健康绑定，Activity 销毁或后台窗口到期终止引擎；前台故障自动退避恢复，后台不循环重启。
 

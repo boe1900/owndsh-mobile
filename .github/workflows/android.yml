@@ -1,0 +1,127 @@
+# [INPUT]: versions.json、engine/package-lock.json、Android 源码与仓库加密测试签名。
+# [OUTPUT]: 经验证的 arm64 APK、SHA256、Actions artifact 与对应提交的测试 Release。
+# [POS]: main 自动发行入口；构建只读，发布由独立 job 获得写权限。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.13.0
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check macOS toolchain host
+        run: |
+          test "$(uname -m)" = arm64
+          echo "TOOLS=$RUNNER_TEMP/owndsh-android-tools" >> "$GITHUB_ENV"
+          if ! arch -x86_64 /usr/bin/true; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+      - name: Cache verified vendor archives
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.TOOLS }}/*.archive
+          key: android-macos-arm64-${{ hashFiles('versions.json') }}
+      - name: Restore test signing key
+        env:
+          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import base64, os, pathlib
+          encoded = os.environ['ANDROID_DEBUG_KEYSTORE_BASE64']
+          if not encoded:
+              raise SystemExit('Configure repository secret ANDROID_DEBUG_KEYSTORE_BASE64 before building.')
+          key = pathlib.Path('build/debug.keystore')
+          key.parent.mkdir(exist_ok=True)
+          key.write_bytes(base64.b64decode(encoded, validate=True))
+          PY
+      - name: Fetch locked toolchain
+        run: python3 scripts/fetch-vendors.py "$TOOLS"
+      - name: Build and verify APK
+        run: |
+          python3 scripts/build.py --tools "$TOOLS" --jdk "$JAVA_HOME" --node "$(command -v node)"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          lock = json.loads(pathlib.Path('versions.json').read_text())
+          signer = pathlib.Path(os.environ['TOOLS']) / 'sdk/build-tools' / lock['android']['buildTools'] / 'apksigner'
+          details = subprocess.check_output([signer, 'verify', '--print-certs', 'build/owndsh-debug.apk'], text=True)
+          expected = 'Signer #1 certificate SHA-256 digest: a9a25a937106c1313a79dbc8d8e45d93d072d8b2a311fb76cb3e9827331d8f6e'
+          if expected not in details.splitlines():
+              raise SystemExit('APK signing certificate differs from the existing OwnDsh test key.')
+          print('Verified existing OwnDsh test signing certificate.')
+          PY
+          cd build
+          shasum -a 256 owndsh-debug.apk > owndsh-debug.apk.sha256
+      - name: Remove signing key
+        if: always()
+        run: rm -f build/debug.keystore
+      - name: Upload verified APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: owndsh-android-arm64
+          path: |
+            build/owndsh-debug.apk
+            build/owndsh-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Show download entry
+        run: |
+          echo '### Android arm64 APK' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Download the APK from the owndsh-android-arm64 artifact below.' >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: owndsh-android-arm64
+          path: dist
+      - name: Publish test APK
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum --check owndsh-debug.apk.sha256
+          tag="android-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          cat > release-notes.md <<EOF
+          Android 9+ arm64 test build with the existing OwnDsh test signature.
+
+          Source commit: ${GITHUB_SHA}
+          Workflow: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Download owndsh-debug.apk on the phone and open it to install.
+          EOF
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --title "Android test build ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            --notes-file release-notes.md owndsh-debug.apk owndsh-debug.apk.sha256
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          echo "[Download APK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/owndsh-debug.apk)" >> "$GITHUB_STEP_SUMMARY"

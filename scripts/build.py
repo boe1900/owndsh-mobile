@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# [INPUT]: 固定 versions.json、npm package-lock、经档案核验的 Android SDK/NDK 输入与 SDK 路径别名、JDK 与官方 NSH AAR
+# [INPUT]: 固定 versions.json、npm package-lock、经档案核验的 Android SDK/NDK、JDK、官方 NSH AAR 与 android/res 图标资源
 # [OUTPUT]: 通过真实恢复策略与 NSH 回归后生成可安装 arm64 APK、依赖二进制审计清单及 SHA256
 # [POS]: mobile 可复现构建入口；生成资产仅写 build/，直接使用 Android 官方工具避免隐式 Gradle 下载
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -123,7 +123,10 @@ for source, library in [(ROOT / 'engine/node_modules/@deepseek-ai/node-addon-sys
     run([ndk / 'bin/aarch64-linux-android28-clang', '-shared', '-fPIC', '-O2', '-DNAPI_VERSION=8', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-I' + str(tools / 'node-mobile/include/node'), source, '-L' + str(libs), '-lnode', '-o', libs / library])
 for library in libs.glob('*.so'): run([ndk / 'bin/llvm-strip', '--strip-unneeded', library])
 unsigned = build / 'owndsh-unsigned.apk'
-run([bt / 'aapt2', 'link', '--manifest', ROOT / 'android/AndroidManifest.xml', '-I', android, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
+resources = build / 'resources.zip'
+resource_files = sorted(path for path in (ROOT / 'android/res').rglob('*') if path.suffix in ('.xml', '.png'))
+run([bt / 'aapt2', 'compile', '-o', resources, *resource_files])
+run([bt / 'aapt2', 'link', '--manifest', ROOT / 'android/AndroidManifest.xml', '-I', android, '-R', resources, '-A', assets, '-0', 'zip', '-0', 'nshc', '-o', unsigned])
 with zipfile.ZipFile(unsigned, 'a') as archive:
     for path in sorted(dex.glob('*.dex')): archive.write(path, path.name, compress_type=zipfile.ZIP_DEFLATED)
     for path in sorted(libs.glob('*.so')): archive.write(path, 'lib/arm64-v8a/' + path.name, compress_type=zipfile.ZIP_STORED)

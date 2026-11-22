@@ -6,6 +6,14 @@
 
 首版目标是 Android 9+ arm64。实际设备验收记录以 API35 arm64 模拟器为准，Android 9 真机尚未覆盖。Java/SDK 构建基线为 JDK17、compile/target35、build-tools35.0.0、NDK r27b；当前脚本运行于 macOS arm64。
 
+## 从 GitHub 下载
+
+在手机打开 [Releases](https://github.com/boe1900/owndsh-mobile/releases)，进入最新的 **Android test build**，下载 **owndsh-debug.apk** 并打开安装。应用使用与桌面端一致的黑底白鲸图标，支持自适应形状和 Android 13 主题图标。
+
+main 每次提交自动构建并发布测试预览版。维护者也可打开 [Android APK Actions](https://github.com/boe1900/owndsh-mobile/actions/workflows/android.yml)，选择 **Run workflow → main** 手动构建。运行成功后可从 **Artifacts → owndsh-android-arm64** 下载 ZIP，其中包含 APK 和对应 SHA256；artifact 保留 30 天，Release 资产单独保留。
+
+云端构建使用仓库加密 secret `ANDROID_DEBUG_KEYSTORE_BASE64` 中的现有测试签名，并校验固定证书，保持已安装验证包的覆盖兼容性。维护者配置 secret 时使用现有 `build/debug.keystore` 的单行 Base64，保留该原始密钥；缺少 secret 会使构建失败。签名密钥不进入 Git、缓存或下载产物。
+
 ## 构建
 
 安装 Python 3.9+、Homebrew `openjdk@17` 和 Node24。从独立仓库根目录运行构建，不需要检出 OwnDsh 服务端或桌面源码。工具下载归档及 SHA256 全部见 `versions.json`；npm 依赖与 integrity 见 `engine/package-lock.json`。
@@ -20,7 +28,7 @@ python3 scripts/build.py \
   --node "$(command -v node)"
 ```
 
-最终 APK 为 `build/owndsh-debug.apk`。这是使用本机临时 debug key 的验证包，未创建 release 签名或商店发布。`--skip-install` 只用于本机迭代；正式验证必须走默认的干净 `npm ci`。
+最终 APK 为 `build/owndsh-debug.apk`。这是测试签名的验证包，不是商店发行。首次本机构建会在 `build/debug.keystore` 生成测试密钥；后续复用该文件，若要覆盖云端安装包需使用仓库配置的同一密钥。`--skip-install` 只用于本机迭代；正式验证必须走默认的干净 `npm ci`。
 
 构建使用官方 aapt2/javac/d8/NDK，直接消费官方 NSH AAR。SDK 别名必须指向已逐文件核验的供应商目录。产物包含 libnode、libnsh、libc++、JNI bridge、官方 `node-addon-system` 的 flock C 源码交叉编译产物和自有原子发布原语。脚本核对所有 ELF 的 ARM64、16K LOAD、动态库闭包、APK ZIP16K 对齐和签名。ZIP 对齐不代替 ELF 对齐。
 
