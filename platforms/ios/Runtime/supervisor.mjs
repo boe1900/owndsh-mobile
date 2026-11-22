@@ -53,7 +53,6 @@ export async function supervise(controlDirectory, workspace, bootstrap, signal) 
               worker.on('error', () => {});
               worker.once('exit', code => { finish(record, code).then(resolve, reject); });
             });
-            // 退出报告失败必须被主循环观察，避免拒绝漂浮并隐式重启 Node。
             record.exited.catch(() => { process.exitCode = 1; });
             current = record;
           }

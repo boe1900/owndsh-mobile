@@ -44,7 +44,6 @@ for item in lock['iosDownloads']: verify_vendor(item)
 cli = lock['downloads'][0]
 cli_archive = tools / (cli['name'] + '.archive')
 if not cli_archive.is_file() or digest(cli_archive) != cli['hash']: raise SystemExit('Changed NSH CLI archive')
-# CLI 也必须来自已锁归档，不能仅校验闲置的压缩包。
 import tarfile
 with tarfile.open(cli_archive) as archive:
     for member in archive.getmembers():

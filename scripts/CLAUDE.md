@@ -8,7 +8,8 @@ prepare-engine.mjs: 对完整源码 hash 固定的官方发布包做共享原生
 verify-apk.py: aapt2 读取实际 versionName/versionCode 并核对可选预期值，从 APK 检查 ELF ABI、LOAD 对齐和 NEEDED 闭包，再核验 ZIP16K 与签名。
 verify-device.py: 从真实 Android 活进程读取私有状态，验证官方 WebUI、正确版本和未认证403/已认证200，不打印 Cookie。
 
-payload.py: 独立build/<platform>/engine npm安装、确定性载荷、NSH构建、原生排除与法律文本；不拥有SDK或签名。
+payload.py: 独立build/<platform>/engine npm安装、确定性载荷、NSH构建与法律文本；按扩展名及格式排除桌面原生文件，不拥有SDK或签名。
+payload_test.py: 覆盖无扩展名 Mach-O/ELF、静态归档与可保留资源的移动载荷准入回归。
 build-ios.py: 校验完整供应商输入、直接编译锁定flock.c，构建arm64双目标并生成无签名archive及Simulator app。
 verify-ios.py: 核验真实bundle版本/切片/依赖/资源，创建专用Simulator实测WebUI、认证门、页面提交与Worker恢复后锁释放；报告不含Cookie。
 

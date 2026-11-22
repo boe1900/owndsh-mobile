@@ -4,6 +4,7 @@
 # [POS]: iOS产物和运行验收边界；只操作本脚本创建的模拟器，不触碰已有设备
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import argparse, hashlib, json, pathlib, plistlib, re, subprocess, time, urllib.request, urllib.error, uuid, zipfile
+from payload import native_binary
 
 p = argparse.ArgumentParser()
 p.add_argument('--app', required=True, type=pathlib.Path)
@@ -53,8 +54,9 @@ def bundle():
     check((payload / 'engine.sha256').read_text().strip() == info['engine_sha256'], 'asset digest differs')
     with zipfile.ZipFile(payload / 'engine.zip') as archive:
         for item in archive.infolist():
-            check(pathlib.Path(item.filename).suffix not in ('.node', '.so', '.dylib', '.dll', '.exe'), 'unreviewed npm native binary')
-            check((payload / 'engine' / item.filename).read_bytes() == archive.read(item), 'extracted engine differs')
+            content = archive.read(item)
+            check(not native_binary(item.filename, content[:8]), 'unreviewed npm native binary: ' + item.filename)
+            check((payload / 'engine' / item.filename).read_bytes() == content, 'extracted engine differs: ' + item.filename)
         check(any(name.endswith('/LICENSE') or 'LICENSE.' in name for name in archive.namelist()), 'npm licenses missing')
     for name in ['nsh/bundle.nshc', 'runtime/supervisor.mjs', 'licenses/NODE-LICENSE.txt', 'licenses/NSH-APACHE-2.0.txt']:
         check((payload / name).is_file(), 'missing bundle resource: ' + name)
@@ -105,7 +107,6 @@ def runtime():
             return page
         first_run, first = wait_for(ready, 'engine did not become ready')
         first_page = inspect(first_run, first)
-        # 私有Debug注入；无产品按钮、网络控制端点或生产命令入口。
         def inject(operation, generation):
             path = cache / 'control/test-command.json'
             temporary = path.with_suffix('.tmp')
