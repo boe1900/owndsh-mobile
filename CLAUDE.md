@@ -3,11 +3,11 @@
 Java 17 + Android WebView + NSH 0.6.1 + digidem Node Mobile 24.20.0-0 + DSH 0.2.2-rc.5 + owndsh-plugin 0.1.0-beta.22
 
 <directory>
-.github/ - Android 自动构建、30 天下载产物与按源码提交发布的测试版 APK
+.github/ - Android 自动构建与测试版 APK 发布，以及隔离分支的 iOS 运行时探针
 android/ - Activity 管理全屏页面与恢复，私有独立 Service 唯一持有 Node，JNI 只适配进程入口和原子文件发布
 engine/ - 锁定 npm 载荷，复用官方 profile、PKCE、模型和 JSONL，通过 Android 接缝提供文本工作区与只读设备工具
 shell/ - NSH 全屏只读加载遮罩，仅接收无凭据阶段与 runtime.status，主页面提交后隐藏
-scripts/ - 供应商归档校验、受 hash 约束的上游适配、Android APK 构建与设备验收入口
+scripts/ - 供应商归档校验、受 hash 约束的上游适配、Android APK 构建、设备验收与临时 iOS Simulator 证明
 licenses/ - NSH、Node Mobile 与 NDK 法律声明，npm 包 LICENSE 随 engine.zip 保留
 </directory>
 

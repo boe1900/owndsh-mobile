@@ -1,0 +1,40 @@
+# [INPUT]: scripts/ios-probe、锁定的上游归档与 Xcode ARM64 Simulator。
+# [OUTPUT]: NodeMobile 一次启动与 Worker/flock/fs.link 行为的独立 JSON 证据。
+# [POS]: 隔离验证分支专用，不发布产品、不读取业务凭据。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+name: iOS runtime probe
+
+on:
+  push:
+    branches: [codex/ios-runtime-proof]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build signed ARM64 Simulator probe
+        run: python3 scripts/ios-probe/build.py
+      - name: Prove runtime behavior
+        run: python3 scripts/ios-probe/run.py
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ios-runtime-proof-${{ github.sha }}
+          path: |
+            build/ios-probe/runtime-proof.json
+            build/ios-probe/build-info.json
+            build/ios-probe/simulator.log
+            build/ios-probe/simulator.png
+          if-no-files-found: warn
+          retention-days: 7
