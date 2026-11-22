@@ -65,7 +65,7 @@ final class EngineOwner {
             try? RuntimeFiles.manager.removeItem(at: RuntimeFiles.control.appendingPathComponent("control.json"))
             guard let resources = Bundle.main.resourceURL else { throw CocoaError(.fileNoSuchFile) }
             let payload = resources.appendingPathComponent("payload")
-            let arguments = ["node", "--expose-internals", payload.appendingPathComponent("runtime/supervisor.mjs").path, RuntimeFiles.control.path, RuntimeFiles.workspace.path, payload.appendingPathComponent("engine/bootstrap.mjs").path]
+            let arguments = ["node", "--expose-internals", "--experimental-vm-modules", payload.appendingPathComponent("runtime/supervisor.mjs").path, RuntimeFiles.control.path, RuntimeFiles.workspace.path, payload.appendingPathComponent("engine/bootstrap.mjs").path]
             setenv("HOME", RuntimeFiles.home.path, 1)
             setenv("DSH_HOME", RuntimeFiles.home.path, 1)
             setenv("TMPDIR", RuntimeFiles.home.appendingPathComponent("tmp").path, 1)
@@ -182,7 +182,11 @@ final class EngineOwner {
         retryAt = Date().addingTimeInterval(policy.failed())
         scheduleRecovery()
     }
+    func acceptsPage(generation: String) -> Bool {
+        !stopping && !nodeReturned && ready?.generation == generation
+    }
     func pageCommitted(epoch: Int) {
+        guard acceptsPage(generation: generation) else { return }
         recovery?.cancel(); recovery = nil
         pageRetry = false
         policy.committed()

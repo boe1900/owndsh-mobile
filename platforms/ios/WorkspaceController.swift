@@ -21,6 +21,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     private var target = "/"
     private var history: [String] = []
     private var committed = false
+    private var pageExpired = false
     private var browser: SFSafariViewController?
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -50,7 +51,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         view.addGestureRecognizer(back)
     }
     private func load(_ value: EngineOwner.Ready) {
-        guard value.generation == owner.generation else { return }
+        guard owner.acceptsPage(generation: value.generation) else { return }
         if pageGeneration == value.generation, committed, web?.url != nil { return }
         rebuild(value)
     }
@@ -58,6 +59,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         pageEpoch += 1
         let epoch = pageEpoch
         committed = false
+        pageExpired = false
         pageGeneration = value.generation
         origin = value.origin
         shell.isHidden = false
@@ -76,25 +78,30 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         page.allowsBackForwardNavigationGestures = true
         view.insertSubview(page, belowSubview: shell)
         NSLayoutConstraint.activate([page.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor), page.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor), page.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), page.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self, weak page] in
+            guard let self, let page, self.web === page, self.pageEpoch == epoch, self.owner.acceptsPage(generation: value.generation), !self.committed, !self.pageExpired else { return }
+            self.interrupt()
+        }
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": value.cookie], for: value.origin)
-        guard !cookies.isEmpty else { owner.pageFailed(); return }
+        guard !cookies.isEmpty else { interrupt(); return }
         let group = DispatchGroup()
         for cookie in cookies {
             group.enter()
             configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { group.leave() }
         }
         group.notify(queue: .main) { [weak self, weak page] in
-            guard let self, let page, self.web === page, self.pageEpoch == epoch, self.owner.generation == value.generation else { return }
-            guard let url = URL(string: self.target, relativeTo: value.origin)?.absoluteURL, self.sameOrigin(url) else { self.owner.pageFailed(http: true); return }
+            guard let self, let page, self.web === page, self.pageEpoch == epoch, self.owner.acceptsPage(generation: value.generation), !self.pageExpired else { return }
+            guard let url = URL(string: self.target, relativeTo: value.origin)?.absoluteURL, self.sameOrigin(url) else { self.interrupt(http: true); return }
             self.navigation = page.load(URLRequest(url: url))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self, weak page] in
-                guard let self, let page, self.web === page, self.pageEpoch == epoch, self.owner.generation == value.generation, !self.committed else { return }
-                self.owner.pageFailed()
-            }
         }
     }
     private func current(_ page: WKWebView, _ candidate: WKNavigation?) -> Bool {
-        page === web && pageGeneration == owner.generation && candidate === navigation
+        page === web && owner.acceptsPage(generation: pageGeneration) && !pageExpired && candidate === navigation
+    }
+    private func interrupt(http: Bool = false) {
+        guard !pageExpired else { return }
+        pageExpired = true
+        owner.pageFailed(http: http)
     }
     private func sameOrigin(_ url: URL) -> Bool {
         guard let origin else { return false }
@@ -113,7 +120,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         target = next
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard webView === web, pageGeneration == owner.generation, let url = action.request.url else { decisionHandler(.cancel); return }
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired, let url = action.request.url else { decisionHandler(.cancel); return }
         if sameOrigin(url) {
             if action.targetFrame?.isMainFrame != false { remember(url) }
             decisionHandler(.allow)
@@ -123,7 +130,7 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         }
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        guard webView === web, pageGeneration == owner.generation else { return }
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired else { return }
         self.navigation = navigation
         committed = false
     }
@@ -134,24 +141,24 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         owner.pageCommitted(epoch: pageEpoch)
     }
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-        guard webView === web, pageGeneration == owner.generation else { decisionHandler(.cancel); return }
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired else { decisionHandler(.cancel); return }
         if response.isForMainFrame, let http = response.response as? HTTPURLResponse, http.statusCode >= 400 {
             decisionHandler(.cancel)
-            owner.pageFailed(http: true)
+            interrupt(http: true)
         } else { decisionHandler(.allow) }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(webView, navigation, error) }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(webView, navigation, error) }
     private func failed(_ page: WKWebView, _ candidate: WKNavigation?, _ error: Error) {
         guard current(page, candidate), (error as NSError).code != NSURLErrorCancelled else { return }
-        owner.pageFailed()
+        interrupt()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        guard webView === web, pageGeneration == owner.generation else { return }
-        owner.pageFailed()
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired else { return }
+        interrupt()
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        guard webView === web, pageGeneration == owner.generation, let url = action.request.url else { return nil }
+        guard webView === web, owner.acceptsPage(generation: pageGeneration), !pageExpired, let url = action.request.url else { return nil }
         if sameOrigin(url) { remember(url); navigation = webView.load(action.request) }
         else if ["http", "https"].contains(url.scheme ?? ""), url.user == nil, url.password == nil { openBrowser(url) { _ in } }
         return nil

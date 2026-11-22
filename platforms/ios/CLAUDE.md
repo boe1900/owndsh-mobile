@@ -7,7 +7,7 @@ RuntimeFiles.swift: 私有路径、保护级别与原子 JSON 边界，稳定 ho
 EngineOwner.swift: 唯一 node_start、generation 和恢复计时器 owner，当前代文件 IPC 与浏览器交接。
 RecoveryPolicyTests.swift: 本地Swift行为回归，覆盖退避上限与健康窗口清债；不进入app target。
 RecoveryPolicy.swift: 有界退避与60秒健康窗口，不拥有调度器。
-WorkspaceController.swift: NshAppView 遮罩、Cookie store、WKWebView 同源导航与页面独立恢复。
+WorkspaceController.swift: NshAppView 遮罩、Cookie store与页面共用有界deadline、WKWebView同源导航与页面独立恢复。
 Runtime/: 常驻 Node supervisor；仅执行 revision 命令并等待旧 Worker 真正退出。
 Info.plist: iOS15、单窗口、loopback 网络许可与仅唤回的 owndsh URL scheme。
 Assets.xcassets/: 沿用 OwnDsh 黑鲸的 iOS1024图标。
