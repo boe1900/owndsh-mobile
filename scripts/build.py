@@ -110,6 +110,10 @@ if policy_tests.exists(): shutil.rmtree(policy_tests)
 policy_tests.mkdir()
 run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests, ROOT / 'platforms/android/src/com/owndsh/mobile/RecoveryPolicy.java', ROOT / 'platforms/android/RecoveryPolicyTest.java'])
 run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.RecoveryPolicyTest'])
+run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests,
+     ROOT / 'platforms/android/src/com/owndsh/mobile/capabilities/MobileOperation.java',
+     ROOT / 'platforms/android/src/com/owndsh/mobile/capabilities/RequestLease.java', ROOT / 'platforms/android/NativeCapabilitiesTest.java'])
+run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.capabilities.NativeCapabilitiesTest'])
 run([bt / 'd8', '--lib', android, '--min-api', '28', '--output', dex, aar / 'classes.jar', *sorted(classes.rglob('*.class'))])
 shutil.copy2(tools / 'node-mobile/bin/arm64-v8a/libnode.so', libs / 'libnode.so')
 shutil.copy2(aar / 'jni/arm64-v8a/libnsh.so', libs / 'libnsh.so')

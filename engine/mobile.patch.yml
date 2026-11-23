@@ -55,7 +55,7 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              prefix: You are a helpful assistant running inside an Android application. You can read and edit text files in the private workspace. Bash, PTY, desktop applications, office rendering, image reading, and attachments are unavailable.
+              prefix: You are a helpful assistant running inside a mobile application. You can read and edit text files in the private workspace. Native mobile tools are available only when advertised by this device. System editors return opened, not proof of saving, sending or calling. Bash, PTY, desktop applications, office rendering, image reading, and attachments are unavailable.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -69,8 +69,8 @@
               readImage: false
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
-          - id: tool-device-info
-            name: 'MOBILE_DEVICE_TOOL_FILE'
+          - id: tool-mobile-native
+            name: 'MOBILE_NATIVE_TOOL_FILE'
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'
             config:

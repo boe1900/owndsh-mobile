@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Android Messenger、私有资产与 NodeBridge，读取 Node 原子发布的真实引擎事件
- * [OUTPUT]: 提供 generation 隔离的引擎状态与系统浏览器请求，失败和后台到期统一终结进程
+ * [OUTPUT]: 提供 generation 隔离的引擎状态与私有原生请求路由，失败和后台到期统一终结进程
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.os.*;
 import android.util.Log;
 import org.json.JSONObject;
+import com.owndsh.mobile.capabilities.NativeCapabilities;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,11 +19,12 @@ import java.util.*;
 import java.util.zip.ZipInputStream;
 
 public final class EngineService extends Service {
-    static final int ATTACH = 1, STOP = 2, STATE = 3, BROWSER = 4, BROWSER_RESULT = 5, VISIBILITY = 6;
+    static final int ATTACH = 1, STOP = 2, STATE = 3, BROWSER = 4, BROWSER_RESULT = 5, VISIBILITY = 6, NATIVE_OPERATION = 7, NATIVE_RESULT = 8, NATIVE_CANCEL = 9;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Messenger inbox = new Messenger(new Handler(Looper.getMainLooper(), this::receive));
     private final String generation = UUID.randomUUID().toString();
-    private final Set<String> browserRequests = new HashSet<>();
+    private final Map<String, JSONObject> nativeRequests = new HashMap<>();
+    private boolean foreground;
     private Messenger client;
     private String phase = "stopped";
     private File runDirectory;
@@ -41,16 +43,19 @@ public final class EngineService extends Service {
             case STOP: stopEngine(""); return true;
             case VISIBILITY:
                 main.removeCallbacks(expire);
+                foreground = data.getBoolean("foreground");
                 if (!data.getBoolean("visible")) main.postDelayed(expire, 10 * 60 * 1000L);
                 return true;
             case BROWSER_RESULT:
+            case NATIVE_RESULT:
                 if (!generation.equals(data.getString("generation"))) return true;
                 String id = data.getString("id", "");
-                if (!browserRequests.contains(id)) return true;
                 try {
-                    JSONObject result = new JSONObject().put("generation", generation).put("ok", data.getBoolean("ok"));
-                    write(new File(runDirectory, "browser-" + id + ".response"), result.toString());
-                } catch (Exception error) { Log.e("OwnDsh", "browser response failed", error); }
+                    JSONObject result = message.what == NATIVE_RESULT ? new JSONObject(data.getString("result", "{}"))
+                            : data.getBoolean("ok") ? new JSONObject().put("ok", true)
+                            : NativeCapabilities.error("unavailable", "System browser could not be opened");
+                    respond(id, result);
+                } catch (Exception error) { Log.e("OwnDsh", "native response failed", error); }
                 return true;
             default: return false;
         }
@@ -109,32 +114,75 @@ public final class EngineService extends Service {
                     }
                 }
             }
-            File[] requests = runDirectory.listFiles((dir, name) -> name.endsWith(".request"));
-            if (requests != null) for (File request : requests) {
-                JSONObject event = new JSONObject(new String(Files.readAllBytes(request.toPath()), StandardCharsets.UTF_8));
-                String id = event.getString("id");
-                if (!id.matches("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}") || !request.getName().equals("browser-" + id + ".request")) continue;
-                if (generation.equals(event.optString("generation")) && browserRequests.add(id)) {
-                    if (event.optString("kind").equals("device-info")) {
-                        Intent battery = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-                        int level = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-                        int scale = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-                        int status = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-                        JSONObject info = new JSONObject().put("platform", "android").put("osVersion", Build.VERSION.RELEASE).put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
-                                .put("androidVersion", Build.VERSION.RELEASE).put("apiLevel", Build.VERSION.SDK_INT)
-                                .put("batteryPercent", level < 0 || scale <= 0 ? -1 : level * 100 / scale)
-                                .put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL);
-                        write(new File(runDirectory, "browser-" + id + ".response"), new JSONObject().put("generation", generation).put("ok", true).put("data", info).toString());
-                        continue;
-                    }
-                    if (!event.optString("kind", "browser").equals("browser")) throw new IOException("Unknown native request");
-                    Bundle data = new Bundle();
-                    data.putString("generation", generation); data.putString("id", id); data.putString("url", event.getString("url"));
-                    send(BROWSER, data);
-                }
-            }
+            pollRequests();
         } catch (Exception error) { Log.e("OwnDsh", "engine event failed", error); }
         main.postDelayed(this::poll, 200);
+    }
+    private File requestFile(String id) { return new File(runDirectory, "browser-" + id + ".request"); }
+    private boolean live(String id) {
+        JSONObject event = nativeRequests.get(id);
+        return event != null && !phase.equals("failed") && !phase.equals("stopping")
+                && generation.equals(event.optString("generation")) && System.currentTimeMillis() < event.optLong("deadline") && requestFile(id).isFile();
+    }
+    private void respond(String id, JSONObject result) throws Exception {
+        if (!live(id)) return;
+        result.put("generation", generation);
+        File target = new File(runDirectory, "browser-" + id + ".response");
+        File temporary = new File(target.getPath() + ".tmp");
+        Files.write(temporary.toPath(), result.toString().getBytes(StandardCharsets.UTF_8));
+        Files.setPosixFilePermissions(temporary.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+        if (!live(id)) { temporary.delete(); return; }
+        if (!temporary.renameTo(target)) { if (!live(id)) return; throw new IOException("Cannot publish native response"); }
+        if (!live(id)) target.delete();
+    }
+    private void pollRequests() {
+        Iterator<Map.Entry<String, JSONObject>> prior = nativeRequests.entrySet().iterator();
+        while (prior.hasNext()) {
+            Map.Entry<String, JSONObject> item = prior.next();
+            if (!live(item.getKey())) {
+                Bundle cancel = new Bundle(); cancel.putString("generation", generation); cancel.putString("id", item.getKey()); send(NATIVE_CANCEL, cancel);
+                new File(runDirectory, "browser-" + item.getKey() + ".response").delete();
+                new File(runDirectory, "browser-" + item.getKey() + ".response.tmp").delete();
+                if (!requestFile(item.getKey()).isFile()) prior.remove();
+            }
+        }
+        File[] files = runDirectory.listFiles((dir, name) -> name.matches("browser-[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\\.request"));
+        if (files == null) return;
+        for (File file : files) {
+            String id = file.getName().substring(8, file.getName().length() - 8);
+            if (nativeRequests.containsKey(id)) continue;
+            try {
+                if (file.length() > 524288) throw new IllegalArgumentException("Native request is too large");
+                JSONObject event = new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+                if (!id.equals(event.getString("id")) || !generation.equals(event.optString("generation"))) continue;
+                Object rawDeadline = event.get("deadline");
+                if (!(rawDeadline instanceof Number)) throw new IllegalArgumentException("Missing request deadline");
+                long deadline = ((Number) rawDeadline).longValue(), now = System.currentTimeMillis();
+                if (deadline <= now) continue;
+                if (deadline > now + 120000 || ((Number) rawDeadline).doubleValue() != deadline) throw new IllegalArgumentException("Invalid request deadline");
+                nativeRequests.put(id, event);
+                String kind = event.optString("kind");
+                Set<String> allowed = new HashSet<>(Arrays.asList("generation", "id", "kind", "deadline"));
+                if (kind.equals("browser")) allowed.add("url");
+                if (kind.equals("mobile-operation")) allowed.addAll(Arrays.asList("operation", "arguments"));
+                Iterator<String> keys = event.keys();
+                while (keys.hasNext()) if (!allowed.contains(keys.next())) throw new IllegalArgumentException("Unexpected request field");
+                if (kind.equals("capabilities")) { respond(id, new JSONObject().put("ok", true).put("data", NativeCapabilities.discovery())); continue; }
+                if (kind.equals("device-info")) {
+                    respond(id, foreground ? new JSONObject().put("ok", true).put("data", NativeCapabilities.deviceInfo(this))
+                            : NativeCapabilities.error("not_foreground", "OwnDsh must be in the foreground")); continue;
+                }
+                Bundle data = new Bundle(); data.putString("generation", generation); data.putString("id", id); data.putLong("deadline", deadline);
+                if (kind.equals("mobile-operation")) { data.putString("event", event.toString()); send(NATIVE_OPERATION, data); }
+                else if (kind.equals("browser")) { data.putString("url", event.getString("url")); send(BROWSER, data); }
+                else respond(id, NativeCapabilities.error("invalid_argument", "Unknown native request kind"));
+            } catch (Exception invalid) {
+                try {
+                    if (!nativeRequests.containsKey(id)) nativeRequests.put(id, new JSONObject().put("generation", generation).put("deadline", System.currentTimeMillis() + 1000));
+                    respond(id, NativeCapabilities.error("invalid_argument", "Invalid native request"));
+                } catch (Exception failure) { Log.e("OwnDsh", "native request rejected", failure); }
+            }
+        }
     }
     private void update(String next, String reason) {
         phase = next;

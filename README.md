@@ -72,7 +72,9 @@ java -cp /tmp/owndsh-recovery-test com.owndsh.mobile.RecoveryPolicyTest
 
 Android 不提供上游 Node builtin addon 的预编译包，因此启动使用 Node 官方 `--expose-internals`，只替换该 addon 的取内部模块入口，保留官方 loader。Android 私有目录禁止 hardlink；安装身份、JSONL 发布和文件 create-if-absent 通过 `renameat2(RENAME_NOREPLACE)` 保留原子且不覆盖的语义，官方 flock/JSONL/fsync/错误算法不变。所有适配均受源码 SHA256 与精确文本边界约束，上游变更会使构建失败。
 
-共享核心为engine/和shell/；系统适配集中在platforms/android/与platforms/ios/，详见architecture.md。
+共享核心为engine/和shell/；系统适配集中在platforms/android/与platforms/ios/，详见[双端架构](architecture.md)。
+
+手机系统操作由本仓库自有的 `engine/mobile-native/` 插件注册，与业务 `owndsh-plugin` 分开。共享传输复用私有文件 IPC/Binder；Android `capabilities/` 集中参数白名单、前台检查、权限与原生确认。Android 已实现即时通知、剪贴板读写、文本分享、SAF 文本导入导出、地图、日历编辑、闹钟、倒计时、拨号页和短信草稿；iOS 当前仅广告 `device_info`。系统交接只返回 opened，不能据此声称保存、拨出或发送。完整参数、双端状态、权限、取消和验收见[手机系统操作支持参考](mobile-capabilities.md)。
 
 
 ## iOS构建与验收

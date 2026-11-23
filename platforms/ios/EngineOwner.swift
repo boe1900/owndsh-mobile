@@ -1,5 +1,5 @@
 /**
- * [INPUT]: NodeMobile C入口、私有 RuntimeConfig/state/browser 文件与 UIKit 前后台
+ * [INPUT]: NodeMobile C入口、私有 RuntimeConfig/state/browser 请求租约与 UIKit 前后台
  * [OUTPUT]: 单次 Node启动、唯一代次/恢复任务、已验证 ready、浏览器请求与无内容Debug渲染证据
  * [POS]: iOS 引擎唯一 owner；supervisor 仅串行替换 Worker，页面由 WorkspaceController 持有
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -214,16 +214,22 @@ final class EngineOwner {
         let files = (try? RuntimeFiles.manager.contentsOfDirectory(at: run, includingPropertiesForKeys: nil)) ?? []
         for file in files where file.pathExtension == "request" {
             guard let event = RuntimeFiles.read(file), event["generation"] as? String == generation, let id = event["id"] as? String, UUID(uuidString: id) != nil,
-                  file.lastPathComponent == "browser-" + id + ".request", !requests.contains(id), let kind = event["kind"] as? String else { continue }
+                  file.lastPathComponent == "browser-" + id + ".request", !requests.contains(id), let kind = event["kind"] as? String,
+                  let deadline = event["deadline"] as? Double, deadline > Date().timeIntervalSince1970 * 1000,
+                  deadline <= Date().timeIntervalSince1970 * 1000 + 120000 else { continue }
             requests.insert(id)
             let expected = generation
             let reply: (Bool, [String: Any]?) -> Void = { [weak self] ok, data in
-                guard let self, self.generation == expected, self.runDirectory == run, !self.stopping else { return }
+                guard let self, self.generation == expected, self.runDirectory == run, !self.stopping,
+                      deadline > Date().timeIntervalSince1970 * 1000, RuntimeFiles.manager.fileExists(atPath: file.path) else { return }
                 var result: [String: Any] = ["generation": expected, "ok": ok]
                 if let data { result["data"] = data }
+                if !ok { result["error"] = ["code": "unavailable", "message": "Native operation is unavailable on this iOS host"] }
                 try? RuntimeFiles.write(result, to: run.appendingPathComponent("browser-" + id + ".response"))
             }
-            if kind == "device-info" {
+            if kind == "capabilities" {
+                reply(true, ["protocol": 1, "platform": "ios", "operations": ["device_info"]])
+            } else if kind == "device-info", active {
                 let device = UIDevice.current
                 device.isBatteryMonitoringEnabled = true
                 reply(true, ["platform": "ios", "osVersion": device.systemVersion, "manufacturer": "Apple", "model": device.model,
