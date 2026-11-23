@@ -9,7 +9,9 @@ mobile.patch.yml: 将官方 registry 默认指向 mobile preset，压缩服务�
 unavailable-shell.mjs: 官方 ShellExecutor 的拒绝型实现，保留权限服务依赖并明确拒绝不可用命令，绝不假装执行成功。
 text-only-attachments.mjs: 官方 AttachmentStore 的纯文本实现，维持会话控制器依赖并复用原文本准入，稳定拒绝图片与文件附件，不调用不可用的 Sharp/hardlink。
 text-only-attachments.test.mjs: 真实 Cordis 服务激活与文本准入回归，覆盖内嵌/持久图片、文件引用和直接存储入口的明确拒绝；不打包进 APK。
-device-info.mjs: 官方 defineTool 注册真实只读 device_info，结果来自两端宿主的机型/版本/电池 API，增加platform/osVersion并保留Android既有字段。
+mobile-native/: 本仓库自有共享 Cordis 工具插件与操作声明；只注册原生广告的能力，不修改业务 owndsh-plugin，iOS 只注册 device_info。
+native-request.mjs: UUID/generation/deadline 私有文件传输，手机120秒、浏览器30秒；AbortSignal/超时删除请求租约，原生错误 code 保留。
+native-request.test.mjs: 真实临时文件验证原生传输元数据、成功/错误/过期响应与取消/超时清理。
 runtime-config.mjs: 两端RuntimeConfig的代次、绝对路径和原生绑定边界验证。
 runtime-config.test.mjs: 拒绝缺失绑定、相对路径与越界代次的协议回归。
 native-storage.mjs: 显式配置flock/发布原语，Android renameat2与iOS link都执行真实锁争用/释放和不覆盖检查；上游继续拥有 JSONL、inode、fsync 与权限算法。

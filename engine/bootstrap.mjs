@@ -1,17 +1,16 @@
 /**
- * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与私有目录中的代次消息通道
+ * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与 native-request 私有代次传输
  * [OUTPUT]: 启动带纯文本附件准入的真实 Web profile，发布经过会话服务/preset/HTTP 核验的状态，复用原插件 PKCE 的浏览器接缝
  * [POS]: mobile/engine 的跨平台入口；平台仅提供路径与浏览器交接，不拥有 DSH 会话或认证令牌
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { mkdir, readFile, writeFile, rename, rm, open, realpath } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, open, realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createNativeRequester } from './native-request.mjs';
 import { isMainThread } from 'node:worker_threads';
 import { parseRuntimeConfig } from './runtime-config.mjs';
 import { configureNativeStorage, publishExclusive, verifyNativeStorage } from './native-storage.mjs';
-import { setTimeout as delay } from 'node:timers/promises';
 
 const [configPath] = process.argv.slice(2);
 const config = parseRuntimeConfig(JSON.parse(await readFile(configPath, 'utf8')));
@@ -33,28 +32,7 @@ async function writeAtomic(name, value) {
 }
 async function publish(state) { await writeAtomic('state.json', { generation, ...state }); }
 
-async function requestNative(kind, data, signal) {
-  signal.throwIfAborted();
-  const id = randomUUID();
-  const name = `browser-${id}`;
-  await writeAtomic(`${name}.request`, { generation, id, kind, ...data });
-  try {
-    const deadline = Date.now() + 30000;
-    while (Date.now() < deadline) {
-      signal.throwIfAborted();
-      try {
-        const result = JSON.parse(await readFile(join(runDirectory, `${name}.response`), 'utf8'));
-        if (result.generation !== generation) throw new Error('Stale browser response');
-        if (!result.ok) throw new Error('Native request failed');
-        return result.data;
-      } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      await delay(100, undefined, { signal });
-    }
-    throw new Error('Native request timed out');
-  } finally {
-    await Promise.all([rm(join(runDirectory, `${name}.request`), { force: true }), rm(join(runDirectory, `${name}.response`), { force: true })]);
-  }
-}
+const requestNative = createNativeRequester({ generation, runDirectory });
 globalThis[Symbol.for('owndsh.mobile.request')] = requestNative;
 globalThis[Symbol.for('owndsh.mobile.openSystemBrowser')] = async (url, signal) => {
   const parsed = new URL(url);
@@ -86,7 +64,7 @@ try {
   initProfile(profileDirectory, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'owndsh-plugin']);
   const overlay = join(runDirectory, 'mobile.patch.yml');
   const overlaySource = await readFile(join(root, 'mobile.patch.yml'), 'utf8');
-  await writeFile(overlay, overlaySource.replace('MOBILE_SHELL_FILE', pathToFileURL(join(root, 'unavailable-shell.mjs')).href).replace('MOBILE_DEVICE_TOOL_FILE', pathToFileURL(join(root, 'device-info.mjs')).href).replace('MOBILE_ATTACHMENTS_FILE', pathToFileURL(join(root, 'text-only-attachments.mjs')).href));
+  await writeFile(overlay, overlaySource.replace('MOBILE_SHELL_FILE', pathToFileURL(join(root, 'unavailable-shell.mjs')).href).replace('MOBILE_NATIVE_TOOL_FILE', pathToFileURL(join(root, 'mobile-native/index.mjs')).href).replace('MOBILE_ATTACHMENTS_FILE', pathToFileURL(join(root, 'text-only-attachments.mjs')).href));
   const anchor = join(root, 'package.json');
   const profile = loadProfileDirectory('owndsh-mobile', profileDirectory, anchor);
   if (profile.skippedBundles.length) throw new Error(JSON.stringify(profile.skippedBundles));

@@ -4,7 +4,7 @@
 成员清单
 App.swift: 单窗口 UIKit 生命周期入口，前后台与无认证参数唤回交给现有 owner。
 RuntimeFiles.swift: 私有路径、保护级别与原子 JSON 边界，稳定 home/workspace 与代次缓存分离。
-EngineOwner.swift: 唯一 node_start、generation 和恢复计时器 owner，当前代文件 IPC 与浏览器交接；Debug渲染证据仅写无内容指标。
+EngineOwner.swift: 唯一node_start/generation/恢复owner，按请求文件和deadline过滤私有IPC；能力发现仅广告现有device_info，其他手机操作待实现，Debug渲染证据仅写无内容指标。
 RecoveryPolicyTests.swift: 本地Swift行为回归，覆盖退避上限、前台健康清债与每次导航期限；不进入app target。
 RecoveryPolicy.swift: 有界退避与60秒健康窗口，不拥有调度器。
 PageLoadDeadline.swift: Cookie与首次页面共享60秒预算，后续主文档导航独立计时，以票据拒绝旧超时回调。

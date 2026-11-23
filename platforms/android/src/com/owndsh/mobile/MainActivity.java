@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖官方 NshView、Android WebView、私有 EngineService Messenger 与 RecoveryPolicy 退避策略
+ * [INPUT]: 依赖 NshView、WebView、EngineService Messenger、RecoveryPolicy 与 NativeCapabilities 系统能力 owner
  * [OUTPUT]: 自动恢复真实 DSH；按主文档请求保留提前到达的 HTTP 故障，仅在成功页面提交后移除遮罩
  * [POS]: mobile Android UI owner，独占当前绑定、网页和唯一恢复任务；Service 继续独占 Node
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -15,6 +15,8 @@ import android.view.*;
 import android.webkit.*;
 import android.widget.*;
 import com.longbridge.nsh.NshView;
+import com.owndsh.mobile.capabilities.NativeCapabilities;
+import org.json.JSONObject;
 import java.io.File;
 import java.util.*;
 
@@ -29,11 +31,12 @@ public final class MainActivity extends Activity {
     private FrameLayout layout;
     private NshView shell;
     private WebView web;
+    private NativeCapabilities capabilities;
     private Binding binding;
     private WebBackForwardList pageHistory;
     private Recovery recovery = Recovery.NONE;
     private long retryAt, pageEpoch;
-    private boolean visible, destroyed, committed, pageFailed, clearHistoryOnCommit;
+    private boolean visible, resumed, destroyed, committed, pageFailed, clearHistoryOnCommit;
     private String origin = "", target = "/", pageUrl = "", displayPhase = "starting";
 
     private final class Binding implements ServiceConnection, IBinder.DeathRecipient {
@@ -66,6 +69,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        capabilities = new NativeCapabilities(this, () -> binding != null && !binding.stopping && binding.binder != null && binding.binder.isBinderAlive());
         if (getIntent().getData() != null && !"owndsh://open".equals(getIntent().getDataString())) { destroyed = true; finish(); return; }
         if (saved != null) {
             target = saved.getString("target", "/");
@@ -221,12 +225,14 @@ public final class MainActivity extends Activity {
         if (owner != binding || owner.stopping) return;
         Log.e("OwnDsh", "engine failed: " + detail);
         owner.stopping = true;
+        capabilities.invalidate();
         showOverlay("recovering");
         schedule(Recovery.ENGINE, policy.failed(SystemClock.uptimeMillis()));
         send(owner, EngineService.STOP, new Bundle());
     }
     private void died(Binding owner) {
         if (owner != binding) return;
+        capabilities.invalidate();
         boolean expected = owner.stopping;
         if (owner.deathLinked) { owner.binder.unlinkToDeath(owner, 0); owner.deathLinked = false; }
         if (owner.bound) { owner.bound = false; unbindService(owner); }
@@ -245,12 +251,14 @@ public final class MainActivity extends Activity {
         if (incoming.isEmpty() || !owner.generation.isEmpty() && !owner.generation.equals(incoming)) return true;
         if (message.what == EngineService.STATE) {
             owner.generation = incoming;
+            capabilities.generation(incoming);
             String phase = data.getString("phase", "failed");
             if (owner.stopping) return true;
             owner.phase = phase;
             if (phase.equals("failed")) { failEngine(owner, data.getString("reason", "")); return true; }
             if (phase.equals("stopping")) {
                 owner.stopping = true;
+                capabilities.invalidate();
                 policy.interrupted(SystemClock.uptimeMillis());
                 showOverlay("recovering");
                 schedule(Recovery.ENGINE, 0);
@@ -273,8 +281,20 @@ public final class MainActivity extends Activity {
         if (message.what == EngineService.BROWSER && !owner.stopping && !owner.generation.isEmpty()) {
             Bundle result = new Bundle();
             result.putString("generation", incoming); result.putString("id", data.getString("id"));
-            result.putBoolean("ok", visible && openExternal(data.getString("url", "")));
+            File request = new File(getCacheDir(), "run-" + incoming + "/browser-" + data.getString("id") + ".request");
+            result.putBoolean("ok", visible && System.currentTimeMillis() < data.getLong("deadline") && request.isFile() && openExternal(data.getString("url", "")));
             send(owner, EngineService.BROWSER_RESULT, result);
+            return true;
+        }
+        if (message.what == EngineService.NATIVE_CANCEL) { capabilities.cancel(data.getString("id", "")); return true; }
+        if (message.what == EngineService.NATIVE_OPERATION && !owner.stopping && !owner.generation.isEmpty()) {
+            try {
+                capabilities.request(new JSONObject(data.getString("event", "{}")), value -> {
+                    if (destroyed || binding != owner || owner.stopping || !owner.generation.equals(incoming)) return;
+                    Bundle result = new Bundle(); result.putString("generation", incoming); result.putString("id", data.getString("id")); result.putString("result", value.toString());
+                    send(owner, EngineService.NATIVE_RESULT, result);
+                });
+            } catch (org.json.JSONException invalid) { Log.e("OwnDsh", "invalid native IPC", invalid); }
             return true;
         }
         return false;
@@ -361,6 +381,7 @@ public final class MainActivity extends Activity {
     private void sendVisibility() {
         if (binding == null) return;
         Bundle data = new Bundle(); data.putBoolean("visible", visible);
+        data.putBoolean("foreground", resumed);
         send(binding, EngineService.VISIBILITY, data);
     }
     private boolean openExternal(String url) {
@@ -377,6 +398,8 @@ public final class MainActivity extends Activity {
         super.onResume();
         if (destroyed) return;
         visible = true;
+        resumed = true;
+        capabilities.foreground(true);
         sendVisibility();
         if (recovery != Recovery.NONE) {
             if (recovery != Recovery.PAGE_TIMEOUT) retryAt = SystemClock.uptimeMillis();
@@ -384,6 +407,18 @@ public final class MainActivity extends Activity {
         }
         else if (binding == null) schedule(Recovery.ENGINE, 0);
         else if (!committed && !binding.stopping) loadPage();
+    }
+    @Override protected void onPause() {
+        resumed = false;
+        capabilities.foreground(false);
+        sendVisibility();
+        super.onPause();
+    }
+    @Override protected void onActivityResult(int code, int result, Intent data) {
+        if (!capabilities.activityResult(code, result, data)) super.onActivityResult(code, result, data);
+    }
+    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
+        if (!capabilities.permissionResult(code, grants)) super.onRequestPermissionsResult(code, permissions, grants);
     }
     @Override protected void onStop() {
         visible = false;
@@ -398,6 +433,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         destroyed = true;
+        capabilities.destroy();
         pageEpoch++;
         main.removeCallbacksAndMessages(null);
         Binding owner = binding;

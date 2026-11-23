@@ -5,7 +5,7 @@
 ## 目录与依赖方向
 
 ```text
-engine/                 共享 Node 入口、profile、插件锁和文本能力策略
+engine/                 共享 Node 入口、profile、插件锁、文本策略与 mobile-native 手机工具插件
 shell/                  共享 NSH 界面，只显示无凭据启动与恢复阶段
 platforms/
   android/              Android Activity、Service、JNI、资源与平台原语
@@ -22,11 +22,25 @@ licenses/               直接上游许可证
 
 每代引擎使用 RuntimeConfig：generation、runDirectory、home、workspace，以及明确的原生存储绑定配置。配置只由宿主生成，发布就绪前必须完成真实存储验证。
 
-文件 IPC 保留 state.json 与 browser-<id>.request/.response。请求含 generation、id、kind 和请求数据，响应含 generation、ok 和结果。id 使用 UUID，宿主只处理当前代和已知请求种类；双方原子写入并设置私有权限。配置、Cookie、认证材料不进入 NSH、URL、构建产物或公共日志。
+文件 IPC 保留 state.json 与 browser-<id>.request/.response。请求含 generation、id、kind、deadline 和请求数据，响应含 generation、ok、data 或结构化 error。id 使用 UUID，宿主只处理当前代和已知请求种类；双方原子写入并设置私有权限。单个坏请求单独拒绝，不阻塞其他请求。配置、Cookie、认证材料不进入 NSH、URL、构建产物或公共日志。
 
 DSH 启动、插件安装身份、profile/preset、Cookie 交换、WebUI 与本机 API 门禁在共享 bootstrap 中实现。ready 必须证明官方 WebUI 可用、匿名本机 API 返回 403、认证请求返回 200、锁与排他文件发布工作正常。
 
 设备工具使用平台中性字段表达操作系统和电池，Android 原有字段保留兼容。系统 API 调用只存在于平台宿主。
+
+## 手机工具边界
+
+`engine/mobile-native/` 是本仓库自有 Cordis 工具插件，工具声明复用官方 DSH Tools。它读取 `{protocol:1,platform,operations}` 能力广告，只注册当前平台实现的稳定 id。业务 `owndsh-plugin` 继续拥有企业服务与登录，本轮不把手机系统操作放进业务插件，也不 fork DSH。
+
+`engine/native-request.mjs` 只拥有 UUID、generation、deadline、AbortSignal 与文件清理。手机请求预算120秒，浏览器交接30秒。新增 kind 为 capabilities/mobile-operation；后者携带 operation 与受限 arguments。Node 取消删除请求文件，宿主将该文件作为执行租约。没有新增 MCP/HTTP 服务、JavascriptInterface 或 NSH 工具桥。
+
+Android `capabilities/` 独占系统 API、参数再验证、权限、原生确认和唯一 Pending。Activity 只路由生命周期、权限和选择器回调；Service 继续独占 Node，仅发现能力、查询设备和路由私有请求。Pending 使用一种 enum 表达确认、等权限、等选择器、就绪、执行和完成，并发请求返回 busy。执行、SAF 每块 I/O 与回复都复核绑定存活、generation、期限和请求文件。取消、超时、换代、Binder death、Activity 销毁后旧回调不得继续执行。
+
+SAF 取消实际撤销 CancellationSignal/Future 并关闭已取得描述符，资源注册时再核对租约。I/O 最多两条线程且不排队；系统提供方不响应取消并占满两条线程时，新操作立即 unavailable。外部文档写入不是事务，不承诺回滚。
+
+操作白名单禁止任意 Intent、URI、组件、extras、权限名与 shell。通知、剪贴板、闹钟和倒计时经原生确认；SAF、分享、地图、日历、拨号和短信交给系统选择器或编辑页。打开系统 App 只返回 opened，实际保存/发送/拨出由用户和系统 App 决定。已交接操作和已开始的外部文档写入不承诺回滚。
+
+iOS 当前仅广告 device_info，其他工具不注册。双端支持、参数、权限、系统版本、结果语义与后续清单集中维护在[手机系统操作支持参考](mobile-capabilities.md)。手机本地工具只服务手机本地 DSH，远程工作区不能自动路由回手机。
 
 构建以同一 npm lock 生成各自独立的载荷暂存目录，不能让两端并行改写同一 node_modules。上游补丁保留完整源码 hash 校验与重复执行验证。
 

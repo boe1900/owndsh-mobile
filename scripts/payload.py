@@ -1,4 +1,4 @@
-# [INPUT]: 同一 npm lock、共享 engine/shell、平台专属 build 暂存与锁定 NSH CLI
+# [INPUT]: 同一 npm lock、共享 engine/shell（含手机插件子目录）、平台专属 build 暂存与锁定 NSH CLI
 # [OUTPUT]: 独立 npm 安装、确定性 engine.zip/目录、摘要与包含无扩展名二进制的原生排除清单
 # [POS]: 两端仅共享真正相同的载荷准备；不拥有 SDK、签名或平台编译
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -19,6 +19,14 @@ def prepare_payload(root, platform, build, nsh, node, env, skip_install=False):
     stage.mkdir(parents=True, exist_ok=True)
     for source in (root / 'engine').iterdir():
         if source.is_file(): shutil.copy2(source, stage / source.name)
+        elif source.is_dir() and source.name != 'node_modules':
+            target = stage / source.name
+            if target.exists(): shutil.rmtree(target)
+            shutil.copytree(source, target)
+    for target in stage.iterdir():
+        if target.name != 'node_modules' and not (root / 'engine' / target.name).exists():
+            if target.is_dir(): shutil.rmtree(target)
+            else: target.unlink()
     def run(command, **kwargs):
         print(' '.join(map(str, command)), flush=True)
         subprocess.run(list(map(str, command)), env=env, check=True, **kwargs)
@@ -27,7 +35,7 @@ def prepare_payload(root, platform, build, nsh, node, env, skip_install=False):
         run([pathlib.Path(node).with_name('npm'), 'ci', '--ignore-scripts', '--omit=optional', '--os=' + ('android' if platform == 'android' else 'darwin'), '--cpu=arm64', '--registry=https://registry.npmjs.org'], cwd=stage)
     run([node, root / 'scripts/prepare-engine.mjs', stage])
     run([node, root / 'scripts/prepare-engine.mjs', stage])
-    run([node, '--test', stage / 'text-only-attachments.test.mjs', root / 'engine/runtime-config.test.mjs'])
+    run([node, '--test', stage / 'text-only-attachments.test.mjs', stage / 'runtime-config.test.mjs', stage / 'native-request.test.mjs', stage / 'mobile-native/index.test.mjs'])
     run([nsh, 'test', root / 'shell'])
     assets = build / platform / 'assets'
     if assets.exists(): shutil.rmtree(assets)
