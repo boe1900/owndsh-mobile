@@ -66,13 +66,15 @@ JSONL、lease、inode、fsync 和权限仍由 DSH 持有。Android 保留 rename
 
 两端构建同一 shell/ NSH bundle。原生宿主仅提供 runtime.status 和 runtime.state。正常状态由完整 DSH WebUI 占满安全区域，无启动、重试或 Console 按钮。
 
+Android 的原生 browser 请求优先使用默认浏览器的 Custom Tabs，复用浏览器账号状态；默认浏览器未声明 CustomTabsService 时回退普通 ACTION_VIEW。展示 extras 不创建真实服务 session 或保活绑定，不能单独阻止 Android 后台限网。Service 在交接前取得 dataSync 前台资格并持有单个浏览器窗口，最长10分钟；取得失败则拒绝交接。pending 请求全部失败/取消且没有已打开浏览器时撤销保护，成功交接后30秒原生传输租约结束不会撤销保护。返回应用、引擎停止/失败/销毁或系统FGS超时统一释放。普通 WebView 外链不取得此窗口，普通后台无常驻前台服务。
+
 iOS 使用 UIKit 的 NshAppView 和 WKWebView，不重写 SwiftUI 业务界面。当前代 Cookie 经 WKHTTPCookieStore 写入完成后才导航。就绪 origin 必须为当前 http://127.0.0.1 随机端口；同源页面留在 WebView，外部 HTTP(S) 链接交给系统浏览器容器，其余 scheme 拒绝。所有异步回调检查代次与页面身份。
 
 WebKit 内容进程退出只恢复页面。业务请求失败、远程工作区离线交给 DSH 处理，不触发原生重载。保存同源相对目标，避免记录旧端口或认证参数。
 
 Cookie 写入与首次主文档共享60秒预算，后续每次主文档导航使用独立60秒期限；导航票据使旧计时器无法中断新页面。前台探测成功并复用已提交页面时重新开始健康窗口，不强制重建页面。HTTP中断后边缘返回可恢复前一同源目标。
 
-插件 beta.22 使用 HTTP loopback PKCE 回调。iOS 的 browser 请求由 SFSafariViewController 承载，使登录期间应用保持前台并保留原协议。owndsh://open 只用于唤回应用，不接收授权码。真实设备上的企业登录、取消和返回需单独验收。
+插件 beta.22 使用 HTTP loopback PKCE 回调。iOS 仅对原生 browser 请求中的 `/enterprise/auth/v1/authorize` 使用非临时 ASWebAuthenticationSession；收到完成页既有 `owndsh://open` 后结束系统授权容器，授权码继续只交给原 loopback。普通网页和其他 OAuth 地址由 SFSafariViewController 承载。容器启动成功即确认原生交接，不占用整个登录过程；真实设备上的企业登录、取消和返回需单独验收。
 
 ## 构建与验证
 

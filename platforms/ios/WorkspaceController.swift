@@ -1,16 +1,23 @@
 /**
- * [INPUT]: EngineOwner 已验证的当前代 ready、NativeShell 与 WKWebView
- * [OUTPUT]: Cookie 写入后加载完整 WebUI，同源页面恢复与系统 Safari 登录容器
+ * [INPUT]: EngineOwner 已验证的当前代 ready、NativeShell、WKWebView 与系统浏览器/授权容器
+ * [OUTPUT]: Cookie 写入后加载完整 WebUI，同源页面恢复；OwnDsh 登录以系统授权会话接收仅唤回信号
  * [POS]: iOS 页面唯一 owner；渲染器退出只重建页面，不重启健康 Worker
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import UIKit
 import WebKit
 import SafariServices
+import AuthenticationServices
 import NativeShell
 
 @MainActor
 final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDelegate, SFSafariViewControllerDelegate {
+    private final class AuthenticationPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+        let window: ASPresentationAnchor
+        init(window: ASPresentationAnchor) { self.window = window }
+        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window }
+    }
+
     let owner = EngineOwner()
     private let shell = NshAppView()
     private var web: WKWebView?
@@ -25,6 +32,8 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
     private var deadline = PageLoadDeadline()
     private var timeout: DispatchWorkItem?
     private var browser: SFSafariViewController?
+    private var authentication: (id: UUID, session: ASWebAuthenticationSession, context: AuthenticationPresentationContext)?
+    deinit { authentication?.session.cancel() }
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -43,7 +52,11 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
             if phase != "ready" { self.shell.isHidden = false; self.view.bringSubviewToFront(self.shell) }
         }
         owner.onReady = { [weak self] in self?.load($0) }
-        owner.onBrowser = { [weak self] url, reply in self?.openBrowser(url, reply: reply) }
+        owner.onBrowser = { [weak self] url, reply in
+            guard let self else { reply(false); return }
+            if url.path == "/enterprise/auth/v1/authorize" { self.openAuthentication(url, reply: reply) }
+            else { self.openBrowser(url, reply: reply) }
+        }
         owner.onPageRecovery = { [weak self] in
             guard let self, let value = self.owner.ready else { return }
             self.rebuild(value)
@@ -206,9 +219,26 @@ final class WorkspaceController: UIViewController, WKNavigationDelegate, WKUIDel
         else if ["http", "https"].contains(url.scheme ?? ""), url.user == nil, url.password == nil { openBrowser(url) { _ in } }
         return nil
     }
+    private func openAuthentication(_ url: URL, reply: @escaping (Bool) -> Void) {
+        guard authentication == nil, browser == nil, presentedViewController == nil,
+              UIApplication.shared.applicationState == .active, let window = view.window else { reply(false); return }
+        let id = UUID()
+        let context = AuthenticationPresentationContext(window: window)
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "owndsh") { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self, self.authentication?.id == id else { return }
+                self.authentication = nil
+            }
+        }
+        session.presentationContextProvider = context
+        session.prefersEphemeralWebBrowserSession = false
+        authentication = (id, session, context)
+        let started = session.start()
+        if !started, authentication?.id == id { authentication = nil }
+        reply(started)
+    }
     private func openBrowser(_ url: URL, reply: @escaping (Bool) -> Void) {
-        guard browser == nil, presentedViewController == nil, UIApplication.shared.applicationState == .active else { reply(false); return }
-        // Safari 容器保持应用前台，插件原 HTTP loopback PKCE 协议无需新增回调。
+        guard authentication == nil, browser == nil, presentedViewController == nil, UIApplication.shared.applicationState == .active else { reply(false); return }
         let safari = SFSafariViewController(url: url)
         safari.delegate = self
         browser = safari

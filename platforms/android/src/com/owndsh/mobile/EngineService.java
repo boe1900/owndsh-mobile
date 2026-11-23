@@ -1,13 +1,19 @@
 /**
- * [INPUT]: 依赖 Android Messenger、私有资产与 NodeBridge，读取 Node 原子发布的真实引擎事件
- * [OUTPUT]: 提供 generation 隔离的引擎状态与私有原生请求路由，失败和后台到期统一终结进程
+ * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge 与 BrowserWindowLease，读取真实引擎事件
+ * [OUTPUT]: 提供代次隔离的私有路由；浏览器交接前获得有界 dataSync 前台资格，返回或终结时释放
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 package com.owndsh.mobile;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
+import android.net.Uri;
 import android.os.*;
 import android.util.Log;
 import org.json.JSONObject;
@@ -20,10 +26,14 @@ import java.util.zip.ZipInputStream;
 
 public final class EngineService extends Service {
     static final int ATTACH = 1, STOP = 2, STATE = 3, BROWSER = 4, BROWSER_RESULT = 5, VISIBILITY = 6, NATIVE_OPERATION = 7, NATIVE_RESULT = 8, NATIVE_CANCEL = 9;
+    private static final long BACKGROUND_WINDOW_MILLIS = 10 * 60 * 1000L;
+    private static final String BROWSER_CHANNEL = "browser-login";
+    private static final int BROWSER_NOTIFICATION = 1;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Messenger inbox = new Messenger(new Handler(Looper.getMainLooper(), this::receive));
     private final String generation = UUID.randomUUID().toString();
     private final Map<String, JSONObject> nativeRequests = new HashMap<>();
+    private BrowserWindowLease browserWindow;
     private boolean foreground;
     private Messenger client;
     private String phase = "stopped";
@@ -31,6 +41,7 @@ public final class EngineService extends Service {
     private Bundle latest = new Bundle();
     private String lastState = "";
     private final Runnable expire = () -> stopEngine("background window expired");
+    private final Runnable browserExpire = () -> stopEngine("browser window expired");
 
     @Override public IBinder onBind(Intent intent) { return inbox.getBinder(); }
     private boolean receive(Message message) {
@@ -44,12 +55,14 @@ public final class EngineService extends Service {
             case VISIBILITY:
                 main.removeCallbacks(expire);
                 foreground = data.getBoolean("foreground");
-                if (!data.getBoolean("visible")) main.postDelayed(expire, 10 * 60 * 1000L);
+                if (foreground) releaseBrowserWindow();
+                if (!data.getBoolean("visible")) main.postDelayed(expire, BACKGROUND_WINDOW_MILLIS);
                 return true;
             case BROWSER_RESULT:
             case NATIVE_RESULT:
                 if (!generation.equals(data.getString("generation"))) return true;
                 String id = data.getString("id", "");
+                if (message.what == BROWSER_RESULT) finishBrowserLaunch(id, data.getBoolean("ok"));
                 try {
                     JSONObject result = message.what == NATIVE_RESULT ? new JSONObject(data.getString("result", "{}"))
                             : data.getBoolean("ok") ? new JSONObject().put("ok", true)
@@ -59,6 +72,43 @@ public final class EngineService extends Service {
                 return true;
             default: return false;
         }
+    }
+    private boolean protectBrowserWindow(String id) {
+        if (!foreground) return false;
+        if (browserWindow == null) {
+            try {
+                NotificationChannel channel = new NotificationChannel(BROWSER_CHANNEL, "网页登录", NotificationManager.IMPORTANCE_LOW);
+                channel.setShowBadge(false);
+                getSystemService(NotificationManager.class).createNotificationChannel(channel);
+                Intent resume = new Intent(this, MainActivity.class).setData(Uri.parse("owndsh://open"));
+                PendingIntent content = PendingIntent.getActivity(this, 0, resume, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                Notification notification = new Notification.Builder(this, BROWSER_CHANNEL)
+                        .setSmallIcon(getResources().getIdentifier("ic_launcher_foreground", "drawable", getPackageName())).setContentTitle("OwnDsh")
+                        .setContentText("正在完成网页登录").setContentIntent(content)
+                        .setCategory(Notification.CATEGORY_SERVICE).setOngoing(true).setOnlyAlertOnce(true).build();
+                if (Build.VERSION.SDK_INT >= 29) startForeground(BROWSER_NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+                else startForeground(BROWSER_NOTIFICATION, notification);
+                browserWindow = new BrowserWindowLease();
+                main.postDelayed(browserExpire, BACKGROUND_WINDOW_MILLIS);
+            } catch (RuntimeException error) {
+                Log.e("OwnDsh", "browser foreground protection unavailable", error);
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                return false;
+            }
+        }
+        browserWindow.begin(id);
+        return true;
+    }
+    private void finishBrowserLaunch(String id, boolean opened) {
+        if (browserWindow == null) return;
+        browserWindow.finish(id, opened);
+        if (!browserWindow.needed()) releaseBrowserWindow();
+    }
+    private void releaseBrowserWindow() {
+        main.removeCallbacks(browserExpire);
+        if (browserWindow == null) return;
+        browserWindow = null;
+        stopForeground(STOP_FOREGROUND_REMOVE);
     }
     private void startEngine() {
         update("starting", "");
@@ -140,6 +190,7 @@ public final class EngineService extends Service {
         while (prior.hasNext()) {
             Map.Entry<String, JSONObject> item = prior.next();
             if (!live(item.getKey())) {
+                finishBrowserLaunch(item.getKey(), false);
                 Bundle cancel = new Bundle(); cancel.putString("generation", generation); cancel.putString("id", item.getKey()); send(NATIVE_CANCEL, cancel);
                 new File(runDirectory, "browser-" + item.getKey() + ".response").delete();
                 new File(runDirectory, "browser-" + item.getKey() + ".response.tmp").delete();
@@ -174,7 +225,14 @@ public final class EngineService extends Service {
                 }
                 Bundle data = new Bundle(); data.putString("generation", generation); data.putString("id", id); data.putLong("deadline", deadline);
                 if (kind.equals("mobile-operation")) { data.putString("event", event.toString()); send(NATIVE_OPERATION, data); }
-                else if (kind.equals("browser")) { data.putString("url", event.getString("url")); send(BROWSER, data); }
+                else if (kind.equals("browser")) {
+                    String url = event.getString("url");
+                    if (!protectBrowserWindow(id)) {
+                        respond(id, NativeCapabilities.error("unavailable", "Browser login cannot continue in the background"));
+                        continue;
+                    }
+                    data.putString("url", url); send(BROWSER, data);
+                }
                 else respond(id, NativeCapabilities.error("invalid_argument", "Unknown native request kind"));
             } catch (Exception invalid) {
                 try {
@@ -198,12 +256,14 @@ public final class EngineService extends Service {
     private void fail(String reason) {
         if (phase.equals("stopping") || phase.equals("failed")) return;
         Log.e("OwnDsh", reason);
+        releaseBrowserWindow();
         update("failed", reason);
         main.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 1000);
     }
     private void stopEngine(String reason) {
         if (phase.equals("stopping")) return;
         main.removeCallbacks(expire);
+        releaseBrowserWindow();
         update("stopping", reason);
         main.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 100);
     }
@@ -243,8 +303,13 @@ public final class EngineService extends Service {
         if (!temporary.renameTo(target)) throw new IOException("Cannot publish engine event");
     }
     @Override public void onDestroy() {
+        releaseBrowserWindow();
         main.removeCallbacksAndMessages(null);
         android.os.Process.killProcess(android.os.Process.myPid());
         super.onDestroy();
+    }
+    @Override public void onTimeout(int startId, int foregroundServiceType) {
+        stopEngine("browser foreground service timed out");
+        stopSelf();
     }
 }

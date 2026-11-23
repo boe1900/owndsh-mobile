@@ -54,7 +54,7 @@ python3 scripts/verify-device.py --adb /path/to/adb --output build/device-verifi
 
 ## 生命周期与能力
 
-Service 是唯一引擎 owner，运行在非导出的 `:engine` 进程。一次进程只启动一次 Node；停止后等待 Binder death 才建立下一代。Service 的引擎消息带 generation，Activity 以当前绑定和代次拒绝迟到结果。打开应用自动启动真实 DSH；启动失败、Node 退出、Binder death 后自动恢复，旧进程死亡前不会绑定下一代。恢复只有一个主线程延迟任务，连续失败依次等待1、2、4、8、16、30秒，此后每5分钟继续尝试；主页面持续健康60秒才清除失败负债，ready 本身不清债。后台取消恢复任务，返回前台继续恢复。浏览器登录不会因 Activity.onStop 解绑定；旋转保持 Activity，退出应用结束引擎，临时后台窗口最长10分钟。系统仍可回收后台进程。
+Service 是唯一引擎 owner，运行在非导出的 `:engine` 进程。一次进程只启动一次 Node；停止后等待 Binder death 才建立下一代。Service 的引擎消息带 generation，Activity 以当前绑定和代次拒绝迟到结果。打开应用自动启动真实 DSH；启动失败、Node 退出、Binder death 后自动恢复，旧进程死亡前不会绑定下一代。恢复只有一个主线程延迟任务，连续失败依次等待1、2、4、8、16、30秒，此后每5分钟继续尝试；主页面持续健康60秒才清除失败负债，ready 本身不清债。后台取消恢复任务，返回前台继续恢复。原生浏览器授权优先 Custom Tabs，交接前由 Service 获得最长10分钟的 dataSync 前台资格，返回应用或引擎终结时撤销；不为登录另行申请通知权限。浏览器登录不会因 Activity.onStop 解绑定；旋转保持 Activity，退出应用结束引擎，临时后台窗口最长10分钟。普通后台不保留前台服务，系统仍可回收进程或限制联网。
 
 DSH占满可用屏幕，保留系统栏安全区域与adjustResize键盘行为。NSH只显示无凭据加载阶段，没有启动、重试、停止或Console按钮；只有真实WebView主文档提交才能撤下遮罩。网页进程退出时销毁并重建WebView，复用健康Node，恢复同一同源路径、查询与片段。主文档网络错误按相同退避重载，60秒未提交也进入恢复；子资源、业务fetch与远程断线不触发重载。HTTP错误保留目标并显示只读中断说明，下次前台返回再尝试，不吞404回到本机根页。重建前保存同源返回历史，系统后退仍可回到前一工作区；Activity保存实例时只记录路径和返回目标，不保存引擎端口或认证信息。
 
@@ -97,6 +97,6 @@ python3 scripts/verify-ios.py \
 
 Swift EngineOwner是唯一generation/前后台/退避owner；Node主线程先设置cwd，仅执行单调revision的run/stop，并在旧Worker真正退出后启动下一代。健康Worker随系统挂起，后台取消重试，前台探测健康后复用或恢复。Worker可隔离JS退出；native崩溃/OOM需要下一次真正进程启动恢复，不能再次node_start。
 
-Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。登录用SFSafariViewController保持应用前台并沿用beta.22的HTTP loopback PKCE；owndsh://open仅唤回，不接收授权码。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
+Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。OwnDsh 企业登录使用非临时 ASWebAuthenticationSession，沿用 beta.22 的 HTTP loopback PKCE；完成页 owndsh://open 只结束授权容器，不接收授权码。普通网页和其他 OAuth 继续使用 SFSafariViewController。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
 
 Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。Simulator验收还等待DSH root出现文本和控件、完成动画帧后再截图，渲染报告仅保存数量与尺寸。

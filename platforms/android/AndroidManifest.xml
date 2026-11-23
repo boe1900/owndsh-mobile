@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 [INPUT]: Android 平台组件、res 中的 OwnDsh 图标与构建器注入的版本信息。
-[OUTPUT]: 应用身份、私有引擎、通知/系统闹钟最小权限与文本分享目标可见性；不申请直接电话、短信、日历或整库文件权限。
+[OUTPUT]: 应用身份、私有引擎、浏览器授权 dataSync 前台资格、通知/闹钟权限与 Custom Tabs 可见性。
 [POS]: Android 安装契约，供 aapt2 链接并由系统加载。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.owndsh.mobile">
   <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
-  <queries><intent><action android:name="android.intent.action.SEND" /><data android:mimeType="text/plain" /></intent></queries>
+  <queries>
+    <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="text/plain" /></intent>
+    <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+  </queries>
   <application android:label="OwnDsh" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="true" android:extractNativeLibs="false" android:debuggable="true" android:supportsRtl="true">
     <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
       <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
       <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="owndsh" android:host="open" /></intent-filter>
     </activity>
-    <service android:name=".EngineService" android:exported="false" android:process=":engine" android:stopWithTask="true" />
+    <service android:name=".EngineService" android:exported="false" android:process=":engine" android:stopWithTask="true" android:foregroundServiceType="dataSync" />
   </application>
 </manifest>
