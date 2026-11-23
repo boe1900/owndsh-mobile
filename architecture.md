@@ -46,7 +46,7 @@ iOS 当前仅广告 device_info，其他工具不注册。双端支持、参数�
 
 ## 生命周期所有权
 
-Android 的 Service 独占 Node，Activity 独占页面与恢复任务。失败后等待旧 Service 进程死亡，再建立下一代。保留当前绑定、Cookie 与页面代次检查。
+Android 的 Service 独占 Node，Activity 独占页面与恢复任务。普通运行只由 Activity 绑定持有 Service；浏览器授权窗口另外取得 started 生命周期，使 UI 进程被回收后引擎和 loopback 监听继续存活。返回应用时释放 started 所有权，由新 Activity 绑定继续持有同代引擎。onStartCommand 返回 START_NOT_STICKY，不启动 Node，也不让系统重启中断的授权。失败后等待旧 Service 进程死亡，再建立下一代。保留当前绑定、Cookie 与页面代次检查。
 
 iOS 的原生 EngineOwner 在进程内只调用一次 node_start。长期 Node 主线程只负责 Worker 调度；真正 DSH 使用共享 bootstrap 在 Worker 中运行。EngineOwner 独占代次、前后台状态与恢复计时器，supervisor 仅串行执行带递增 revision 的 run/stop 命令并报告 Worker exit，不叠加第二套退避。
 
@@ -66,7 +66,7 @@ JSONL、lease、inode、fsync 和权限仍由 DSH 持有。Android 保留 rename
 
 两端构建同一 shell/ NSH bundle。原生宿主仅提供 runtime.status 和 runtime.state。正常状态由完整 DSH WebUI 占满安全区域，无启动、重试或 Console 按钮。
 
-Android 的原生 browser 请求优先使用默认浏览器的 Custom Tabs，复用浏览器账号状态；默认浏览器未声明 CustomTabsService 时回退普通 ACTION_VIEW。展示 extras 不创建真实服务 session 或保活绑定，不能单独阻止 Android 后台限网。Service 在交接前取得 dataSync 前台资格并持有单个浏览器窗口，最长10分钟；取得失败则拒绝交接。pending 请求全部失败/取消且没有已打开浏览器时撤销保护，成功交接后30秒原生传输租约结束不会撤销保护。返回应用、引擎停止/失败/销毁或系统FGS超时统一释放。普通 WebView 外链不取得此窗口，普通后台无常驻前台服务。
+Android 的原生 browser 请求优先使用默认浏览器的 Custom Tabs，复用浏览器账号状态；默认浏览器未声明 CustomTabsService 时回退普通 ACTION_VIEW。展示 extras 不创建真实服务 session 或保活绑定，不能单独阻止 Android 后台限网。Service 在交接前先 startService 自身，再取得 dataSync 前台资格并持有单个浏览器窗口，最长10分钟；任一步失败都清理已取得的资格并拒绝交接。pending 请求全部失败/取消且没有已打开浏览器时撤销保护，成功交接后30秒原生传输租约结束不会撤销保护。返回应用、引擎停止/失败/销毁或系统FGS超时统一 stopForeground 和 stopSelf。普通 WebView 外链不取得此窗口，普通后台无 started 所有权或常驻前台服务。
 
 iOS 使用 UIKit 的 NshAppView 和 WKWebView，不重写 SwiftUI 业务界面。当前代 Cookie 经 WKHTTPCookieStore 写入完成后才导航。就绪 origin 必须为当前 http://127.0.0.1 随机端口；同源页面留在 WebView，外部 HTTP(S) 链接交给系统浏览器容器，其余 scheme 拒绝。所有异步回调检查代次与页面身份。
 

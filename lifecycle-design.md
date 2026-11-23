@@ -7,7 +7,7 @@
 | 参考实现 | 实际所有权与恢复机制 | 本项目决策 |
 | --- | --- | --- |
 | Fish Pocket | iOS 每进程启动一次 Node，由 JavaScript Worker 承载 DSH；连续崩溃退避，稳定运行60秒后重置 | 借鉴故障计数与稳定窗口，保留已有 Android 进程隔离 |
-| dsh-Go | Android 前台服务持有外部系统进程；按代次管理启动、就绪和安全恢复 | 借鉴代次围栏，网页登录期间由既有 Service 取得有界 dataSync 前台资格 |
+| dsh-Go | Android 前台服务持有外部系统进程；按代次管理启动、就绪和安全恢复 | 借鉴代次围栏，网页登录期间由既有 Service 取得有界 started 生命周期与 dataSync 前台资格 |
 | OwnDsh | 非导出的独立 `:engine` Service 内嵌 Node，真实 HTTP 认证和官方页面探测完成后发布 ready | Service 唯一持有 Node，Activity 唯一持有绑定、页面及恢复计时器 |
 
 对照源码为 Fish Pocket `8be4c915986c886b4202a6660ecc691185e7ea6d` 和 dsh-Go `da798027013851328f83f59af4adb52c3afaab23`。Fish Pocket 的关键实现位于 `engine/main.mjs` 与 `app/DshIOS/NodeEngine.swift`；dsh-Go 位于 `runtime/RuntimeController.kt`、`DshProcess.kt` 与 `SafeMode.kt`。两个独立 Android 候选经只读交叉评审后采用候选 A，因其在停止故障引擎前计入退避，并隔离当前 Binding 与页面回调。
@@ -22,7 +22,9 @@ Activity 只有一个延迟恢复任务，恢复目标为引擎、页面或页�
 
 原生 browser 请求优先默认浏览器的 Custom Tabs，普通外链沿用系统浏览器。null SESSION Binder 只选择呈现，不建立保活绑定。Android 15 设备实测 CustomTabActivity 显示后 OwnDsh 仍进入 LAST_ACTIVITY，后台链将其阻断；因此 Service 必须在交接前取得 dataSync 前台资格，取得失败则不打开浏览器。
 
-Service 独占 BrowserWindowLease 和最长10分钟的硬期限，期间显示可返回应用的低优先级通知；图标复用透明白鲸，不为登录另行请求通知权限。pending 请求失败/取消只撤销自身，不能释放已打开窗口；成功交接后删除原30秒传输文件不会结束网页登录保护。返回应用前台、窗口到期、引擎失败/停止/销毁统一撤销，Android 15 dataSync 系统超时调用相同停止路径。保护窗口不延长既有后台上限，也不修改插件 PKCE、令牌交换或授权超时。
+Service 独占 BrowserWindowLease 和最长10分钟的硬期限。交接前先 startService 自身取得 started 生命周期，再取得 dataSync 前台资格；任一步失败都清理并拒绝交接。仅有 startForeground 不能保住 bound-only Service，最后一个 Activity 绑定消失仍会销毁它；started 所有权使授权中的 UI 进程被系统回收时引擎和 loopback 监听继续存活。onStartCommand 只返回 START_NOT_STICKY，不启动 Node，也不让系统重启中断的授权。
+
+保护期间显示可返回应用的低优先级通知；图标复用透明白鲸，不为登录另行请求通知权限。pending 请求失败/取消只撤销自身，不能释放已打开窗口；成功交接后删除原30秒传输文件不会结束网页登录保护。返回应用前台、窗口到期、引擎失败/停止/销毁统一 stopForeground 和 stopSelf；返回后由 Activity 绑定继续持有同代引擎。Android 15 dataSync 系统超时调用相同停止路径。保护窗口不延长既有后台上限，也不修改插件 PKCE、令牌交换或授权超时。
 
 ## 页面恢复边界
 

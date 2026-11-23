@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge 与 BrowserWindowLease，读取真实引擎事件
- * [OUTPUT]: 提供代次隔离的私有路由；浏览器交接前获得有界 dataSync 前台资格，返回或终结时释放
+ * [OUTPUT]: 提供代次隔离的私有路由；浏览器交接前取得有界 started 生命周期与 dataSync 前台资格，返回或终结时释放
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -44,6 +44,7 @@ public final class EngineService extends Service {
     private final Runnable browserExpire = () -> stopEngine("browser window expired");
 
     @Override public IBinder onBind(Intent intent) { return inbox.getBinder(); }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_NOT_STICKY; }
     private boolean receive(Message message) {
         Bundle data = message.getData();
         switch (message.what) {
@@ -86,6 +87,7 @@ public final class EngineService extends Service {
                         .setSmallIcon(getResources().getIdentifier("ic_launcher_foreground", "drawable", getPackageName())).setContentTitle("OwnDsh")
                         .setContentText("正在完成网页登录").setContentIntent(content)
                         .setCategory(Notification.CATEGORY_SERVICE).setOngoing(true).setOnlyAlertOnce(true).build();
+                startService(new Intent(this, EngineService.class));
                 if (Build.VERSION.SDK_INT >= 29) startForeground(BROWSER_NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
                 else startForeground(BROWSER_NOTIFICATION, notification);
                 browserWindow = new BrowserWindowLease();
@@ -93,6 +95,7 @@ public final class EngineService extends Service {
             } catch (RuntimeException error) {
                 Log.e("OwnDsh", "browser foreground protection unavailable", error);
                 stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelf();
                 return false;
             }
         }
@@ -109,6 +112,7 @@ public final class EngineService extends Service {
         if (browserWindow == null) return;
         browserWindow = null;
         stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
     }
     private void startEngine() {
         update("starting", "");
