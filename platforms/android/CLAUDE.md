@@ -2,17 +2,21 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-AndroidManifest.xml: Android 9+、API35 debug 应用与私有engine；声明通知/普通SET_ALARM权限和text/plain分享查询，不申请电话/短信/日历或整库文件权限，owndsh://open仅唤回现有Activity。
-res/: 黑底白鲸启动图标，自适应与 Android 13 单色配置共用安全边距前景，五种密度位图保留旧版回退。
-src/com/owndsh/mobile/MainActivity.java: NSH/WebView/绑定与唯一恢复任务 owner，按绑定和代次过滤消息；仅转发 capabilities 生命周期/权限/选择器回调，主文档提交后撤遮罩并保存同源返回历史。
-src/com/owndsh/mobile/EngineService.java: Node 唯一owner与私有文件IPC路由，隔离单个坏请求、发现平台能力、撤销失效租约；启动失败/Node退出终结进程，系统API留在capabilities。
+AndroidManifest.xml: Android 9+、API35 debug 应用与私有 engine；固定 com.owndsh.mobile://oauth/callback 与普通 owndsh://open 入口、dataSync 资格、系统权限和浏览器查询。
+res/: 黑底白鲸启动图标与网页登录通知前景，自适应与 Android 13 单色配置共用安全边距，五种密度位图保留旧版回退。
+src/com/owndsh/mobile/MainActivity.java: NSH/WebView/绑定与恢复任务 owner；浏览器优先 Custom Tabs，固定企业回调仅存单槽内存，当前绑定就绪后经私有 Messenger 交付，不加载到 WebView。
+src/com/owndsh/mobile/EngineService.java: Node/浏览器窗口唯一 owner；私有授权请求按当前代次、state、期限、真实租约单次应答；交接前取得有界 started/dataSync 资格，返回或终结释放。
+src/com/owndsh/mobile/AuthorizationCallback.java: 纯 Java 固定 URI/参数解析与 Activity 单次内存交付槽；不拥有 PKCE、令牌或登录事务。
+src/com/owndsh/mobile/BrowserWindowLease.java: 纯pending/已打开状态，其他浏览器请求失败或原请求文件清理不能释放成功窗口，取消后的迟到交接不复活租约。
 src/com/owndsh/mobile/capabilities/: 原生系统操作唯一pending owner、纯参数白名单和租约状态机，集中前台/权限/确认/SAF/Intent与取消，详细支持见根mobile-capabilities.md。
 src/com/owndsh/mobile/RecoveryPolicy.java: 无 Android 的有界恢复退避，短暂 ready 不清债，主页面持续健康60秒才复位。
 RecoveryPolicyTest.java: 本地 JVM 行为回归，覆盖持续崩溃限速、健康窗口、中断加载与恢复负债。
+BrowserWindowLeaseTest.java: 本地JVM回归多请求失败、成功窗口延续、取消及迟到结果；OS后台联网资格由设备验收。
+AuthorizationCallbackTest.java: 本地 JVM 验证固定 URI、编码后重复键、大小/字符边界与单槽交付；Binder、代次与系统唤醒须设备验收。
 NativeCapabilitiesTest.java: 本地JVM覆盖操作参数白名单、UTF-8/大小/数值边界、文件撤销/超时/换代/完成后的执行拒绝。
 src/com/owndsh/mobile/NodeBridge.java: 加载锁定 libnode 与自有 JNI，暴露单次阻塞入口。
 cpp/node_bridge.cpp: 在专用线程调用 node::Start，保持 argv 生命周期并接入 Android 日志；静态原子禁止重复启动。
 cpp/file_publish.c: Node-API 包装 renameat2(RENAME_NOREPLACE)，保留上游原子且不覆盖目标的文件发布语义。
 
-系统浏览器是允许的临时后台区间；没有前台服务，不承诺无限后台执行。app 自有 Activity onDestroy 结束引擎，旋转由 configChanges 保持同一绑定。后台取消恢复任务，前台恢复继续；主文档请求先登记目标，使提前于onPageStarted到达的HTTP错误保留原目标与中断说明，业务fetch与远程断线不触发原生重载。
+Custom Tabs 不建立浏览器服务 session 或保活绑定。Service 交接前取得有界 started/dataSync 资格，允许 UI 进程被回收后继续绑定同代引擎；这些资格不保证 OPPO 后台执行。企业登录由固定 scheme 先唤醒 Activity，再交付授权码；Node 先原子发布五分钟以内的请求，Service 接收回调时先扫描请求，避免极快回调丢失。同代/live/state 和单次应答共同拒绝无活动、过期、取消与重放结果。原生不持有 verifier/令牌，回调不保留在启动 Intent、实例保存状态、日志或 WebView。返回应用或引擎终结释放 started/dataSync 资格；普通后台无 started 所有权，既有窗口仍为10分钟上限。页面与引擎分别恢复，业务 fetch 与远程断线不触发原生重载。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -4,16 +4,18 @@
 成员清单
 package.json: 精确锁定官方 Harness、OwnDsh 插件与必要 peer，Node 模块安装不执行桌面脚本。
 package-lock.json: npm 完整依赖图及制品 integrity，构建在每端独立build暂存以arm64、omit optional 执行干净 ci。
-bootstrap.mjs: 官方 profile 启动与会话服务/preset/WebUI/Cookie/本机 API 就绪门；等待插件安装身份，初始化官方私有工作区，并连接原生请求。
+bootstrap.mjs: 官方 profile 启动与会话服务/preset/WebUI/Cookie/本机 API 就绪门；显式广告时注册企业 Android 原生回调，其余使用上游 loopback。
 mobile.patch.yml: 将官方 registry 默认指向 mobile preset，压缩服务按官方 group/isolate 隔离，保留文本文件/审批/权限，以纯文本 AttachmentStore 替换本地附件存储并关闭图片及桌面工具入口。
 unavailable-shell.mjs: 官方 ShellExecutor 的拒绝型实现，保留权限服务依赖并明确拒绝不可用命令，绝不假装执行成功。
 text-only-attachments.mjs: 官方 AttachmentStore 的纯文本实现，维持会话控制器依赖并复用原文本准入，稳定拒绝图片与文件附件，不调用不可用的 Sharp/hardlink。
 text-only-attachments.test.mjs: 真实 Cordis 服务激活与文本准入回归，覆盖内嵌/持久图片、文件引用和直接存储入口的明确拒绝；不打包进 APK。
 mobile-native/: 本仓库自有共享 Cordis 工具插件与操作声明；只注册原生广告的能力，不修改业务 owndsh-plugin，iOS 只注册 device_info。
-native-request.mjs: UUID/generation/deadline 私有文件传输，手机120秒、浏览器30秒；AbortSignal/超时删除请求租约，原生错误 code 保留。
-native-request.test.mjs: 真实临时文件验证原生传输元数据、成功/错误/过期响应与取消/超时清理。
-runtime-config.mjs: 两端RuntimeConfig的代次、绝对路径和原生绑定边界验证。
-runtime-config.test.mjs: 拒绝缺失绑定、相对路径与越界代次的协议回归。
+native-request.mjs: UUID/generation/deadline 私有文件传输与发布确认；手机120秒、浏览器30秒、授权回调至多五分钟，取消撤销租约。
+native-request.test.mjs: 真实文件验证发布确认、各 kind 期限、元数据、成功/错误/过期响应与取消清理。
+native-authorization.mjs: Android 企业授权 callback 工厂；先发布请求，严格验证固定 URI/state，以插件原错误类交付结果，PKCE 与令牌留给上游。
+native-authorization.test.mjs: 真实传输回归发布时序、成功/拒绝、严格 URI、错 state、取消/超时/迟到与旧代响应；不进入载荷。
+runtime-config.mjs: 两端 RuntimeConfig 的代次、绝对路径、存储绑定与可选固定授权回调广告边界。
+runtime-config.test.mjs: 拒绝缺失绑定、相对路径、越界代次及非固定回调广告的协议回归。
 native-storage.mjs: 显式配置flock/发布原语，Android renameat2与iOS link都执行真实锁争用/释放和不覆盖检查；上游继续拥有 JSONL、inode、fsync 与权限算法。
 
 原生消息与 Cookie 只保存在应用私有目录。NSH 不接触令牌。上游兼容变换由 scripts/prepare-engine.mjs 的完整文件 hash 与精确接缝检查约束。

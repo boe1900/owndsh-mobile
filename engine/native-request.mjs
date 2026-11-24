@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node 私有文件、UUID 和 AbortSignal；宿主按同一 generation 与 deadline 应答
- * [OUTPUT]: 提供有界 requestNative，取消和超时删除请求租约并清理结果，错误保留原生 code
+ * [OUTPUT]: 提供有界 requestNative 与发布确认；仅授权回调可等待五分钟，取消和超时撤销请求租约
  * [POS]: 共享引擎的传输边界；不注册工具、不决定权限，browser 文件名保持双端兼容
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -14,15 +14,19 @@ export class NativeRequestError extends Error {
 }
 
 export function createNativeRequester({ generation, runDirectory, timeout = 120000, pollInterval = 100 }) {
-  return async function requestNative(kind, data = {}, signal = new AbortController().signal) {
+  return async function requestNative(kind, data = {}, signal = new AbortController().signal, options = {}) {
     signal.throwIfAborted();
+    const limit = kind === 'authorization-callback' ? 300000 : kind === 'browser' ? 30000 : 120000;
+    const budget = options.timeoutMs ?? timeout;
+    if (!Number.isSafeInteger(budget) || budget <= 0) throw new TypeError('Invalid native request timeout');
     const id = randomUUID();
     const base = join(runDirectory, `browser-${id}`);
-    const deadline = Date.now() + (kind === 'browser' ? Math.min(timeout, 30000) : timeout);
+    const deadline = Date.now() + Math.min(budget, limit);
     try {
       await writeFile(`${base}.request.tmp`, JSON.stringify({ ...data, generation, id, kind, deadline }), { mode: 0o600 });
       signal.throwIfAborted();
       await rename(`${base}.request.tmp`, `${base}.request`);
+      options.onPublished?.();
       while (Date.now() < deadline) {
         signal.throwIfAborted();
         try {

@@ -20,9 +20,9 @@ licenses/               直接上游许可证
 
 ## 共享运行时契约
 
-每代引擎使用 RuntimeConfig：generation、runDirectory、home、workspace，以及明确的原生存储绑定配置。配置只由宿主生成，发布就绪前必须完成真实存储验证。
+每代引擎使用 RuntimeConfig：generation、runDirectory、home、workspace，以及明确的原生存储绑定配置。Android 显式提供 `native.authorizationCallbackUri=com.owndsh.mobile://oauth/callback`；未广告的平台不注册原生授权工厂。配置只由宿主生成，发布就绪前必须完成真实存储验证。
 
-文件 IPC 保留 state.json 与 browser-<id>.request/.response。请求含 generation、id、kind、deadline 和请求数据，响应含 generation、ok、data 或结构化 error。id 使用 UUID，宿主只处理当前代和已知请求种类；双方原子写入并设置私有权限。单个坏请求单独拒绝，不阻塞其他请求。配置、Cookie、认证材料不进入 NSH、URL、构建产物或公共日志。
+文件 IPC 保留 state.json 与 browser-<id>.request/.response。请求含 generation、id、kind、deadline 和请求数据，响应含 generation、ok、data 或结构化 error。id 使用 UUID，宿主只处理当前代和已知请求种类；双方原子写入并设置私有权限，响应不可覆写。单个坏请求单独拒绝，不阻塞其他请求。配置、Cookie、认证材料不进入 NSH、构建产物或公共日志；固定 OAuth URI 中的 code/state 只作为浏览器到原生的短暂交付。
 
 DSH 启动、插件安装身份、profile/preset、Cookie 交换、WebUI 与本机 API 门禁在共享 bootstrap 中实现。ready 必须证明官方 WebUI 可用、匿名本机 API 返回 403、认证请求返回 200、锁与排他文件发布工作正常。
 
@@ -32,7 +32,7 @@ DSH 启动、插件安装身份、profile/preset、Cookie 交换、WebUI 与本�
 
 `engine/mobile-native/` 是本仓库自有 Cordis 工具插件，工具声明复用官方 DSH Tools。它读取 `{protocol:1,platform,operations}` 能力广告，只注册当前平台实现的稳定 id。业务 `owndsh-plugin` 继续拥有企业服务与登录，本轮不把手机系统操作放进业务插件，也不 fork DSH。
 
-`engine/native-request.mjs` 只拥有 UUID、generation、deadline、AbortSignal 与文件清理。手机请求预算120秒，浏览器交接30秒。新增 kind 为 capabilities/mobile-operation；后者携带 operation 与受限 arguments。Node 取消删除请求文件，宿主将该文件作为执行租约。没有新增 MCP/HTTP 服务、JavascriptInterface 或 NSH 工具桥。
+`engine/native-request.mjs` 只拥有 UUID、generation、deadline、AbortSignal、发布确认与文件清理。手机请求预算120秒，浏览器交接30秒，只有 authorization-callback 可等至五分钟。capabilities/mobile-operation 继续用于手机工具，后者携带 operation 与受限 arguments。Node 取消删除请求文件，宿主将该文件作为执行租约。没有新增 MCP/HTTP 服务、JavascriptInterface 或 NSH 工具桥。
 
 Android `capabilities/` 独占系统 API、参数再验证、权限、原生确认和唯一 Pending。Activity 只路由生命周期、权限和选择器回调；Service 继续独占 Node，仅发现能力、查询设备和路由私有请求。Pending 使用一种 enum 表达确认、等权限、等选择器、就绪、执行和完成，并发请求返回 busy。执行、SAF 每块 I/O 与回复都复核绑定存活、generation、期限和请求文件。取消、超时、换代、Binder death、Activity 销毁后旧回调不得继续执行。
 
@@ -46,7 +46,7 @@ iOS 当前仅广告 device_info，其他工具不注册。双端支持、参数�
 
 ## 生命周期所有权
 
-Android 的 Service 独占 Node，Activity 独占页面与恢复任务。失败后等待旧 Service 进程死亡，再建立下一代。保留当前绑定、Cookie 与页面代次检查。
+Android 的 Service 独占 Node，Activity 独占页面与恢复任务。普通运行只由 Activity 绑定持有 Service；浏览器窗口另有 started 所有权，使 UI 进程被回收后仍可绑定原引擎。started/dataSync 不保证 OPPO 后台执行，企业登录由固定 scheme 先唤醒 Activity 再交码。返回应用释放 started 所有权，由新 Activity 绑定持有同代引擎。onStartCommand 返回 START_NOT_STICKY，不启动 Node 或恢复中断事务。失败后等待旧 Service 进程死亡，再建立下一代；保留绑定、Cookie 与页面代次检查。
 
 iOS 的原生 EngineOwner 在进程内只调用一次 node_start。长期 Node 主线程只负责 Worker 调度；真正 DSH 使用共享 bootstrap 在 Worker 中运行。EngineOwner 独占代次、前后台状态与恢复计时器，supervisor 仅串行执行带递增 revision 的 run/stop 命令并报告 Worker exit，不叠加第二套退避。
 
@@ -66,13 +66,17 @@ JSONL、lease、inode、fsync 和权限仍由 DSH 持有。Android 保留 rename
 
 两端构建同一 shell/ NSH bundle。原生宿主仅提供 runtime.status 和 runtime.state。正常状态由完整 DSH WebUI 占满安全区域，无启动、重试或 Console 按钮。
 
+Android 的原生 browser 请求优先使用默认浏览器的 Custom Tabs，复用浏览器账号状态；默认浏览器未声明 CustomTabsService 时回退普通 ACTION_VIEW。展示 extras 不创建真实服务 session 或保活绑定，不能单独阻止 Android 后台限网。Service 在交接前先 startService 自身，再取得 dataSync 前台资格并持有单个浏览器窗口，最长10分钟；任一步失败都清理已取得的资格并拒绝交接。pending 请求全部失败/取消且没有已打开浏览器时撤销保护，成功交接后30秒原生传输租约结束不会撤销保护。返回应用、引擎停止/失败/销毁或系统FGS超时统一 stopForeground 和 stopSelf。普通 WebView 外链不取得此窗口，普通后台无 started 所有权或常驻前台服务。
+
+Android 企业登录由 `native-authorization.mjs` 保留原 `{redirectUri,result,cancel}` 契约。hash 锁定的 prepare-engine 只替换 beta.22 企业 runLogin 的 callback 工厂，并传入原 PkceLoopbackError；没有广告时仍调用上游 loopback，MCP 的工厂不变。Node 先原子发布 `authorization-callback` 请求（仅额外 state），再允许打开浏览器。固定 scheme 先唤醒 MainActivity，单槽内存只等当前绑定就绪，随后私有 AUTH_CALLBACK 消息携带 uri/generation。Service 接收时先扫描已发布文件，再以同代/live/state 匹配并单次写入 `{uri}` 响应。两端均拒绝未知/重复字段、非固定 URI、userinfo/port/fragment 和过大输入；只允许 code+state 或 access_denied+state。Node 再验证 state 后交给原令牌交换，取消/超时删除租约；无活动、旧代和重放不可复活认证。原生不拥有 verifier/令牌，不把回调保留在启动 Intent、实例保存状态、WebView 或日志。服务端/Console 必须只为既有 dsh-desktop 精确放行该 URI，兑换仍绑定原 redirectUri、installation 和 S256。
+
 iOS 使用 UIKit 的 NshAppView 和 WKWebView，不重写 SwiftUI 业务界面。当前代 Cookie 经 WKHTTPCookieStore 写入完成后才导航。就绪 origin 必须为当前 http://127.0.0.1 随机端口；同源页面留在 WebView，外部 HTTP(S) 链接交给系统浏览器容器，其余 scheme 拒绝。所有异步回调检查代次与页面身份。
 
 WebKit 内容进程退出只恢复页面。业务请求失败、远程工作区离线交给 DSH 处理，不触发原生重载。保存同源相对目标，避免记录旧端口或认证参数。
 
 Cookie 写入与首次主文档共享60秒预算，后续每次主文档导航使用独立60秒期限；导航票据使旧计时器无法中断新页面。前台探测成功并复用已提交页面时重新开始健康窗口，不强制重建页面。HTTP中断后边缘返回可恢复前一同源目标。
 
-插件 beta.22 使用 HTTP loopback PKCE 回调。iOS 的 browser 请求由 SFSafariViewController 承载，使登录期间应用保持前台并保留原协议。owndsh://open 只用于唤回应用，不接收授权码。真实设备上的企业登录、取消和返回需单独验收。
+插件 beta.22 使用 HTTP loopback PKCE 回调。iOS 仅对原生 browser 请求中的 `/enterprise/auth/v1/authorize` 使用非临时 ASWebAuthenticationSession；收到完成页既有 `owndsh://open` 后结束系统授权容器，授权码继续只交给原 loopback。普通网页和其他 OAuth 地址由 SFSafariViewController 承载。容器启动成功即确认原生交接，不占用整个登录过程；真实设备上的企业登录、取消和返回需单独验收。
 
 ## 构建与验证
 
@@ -82,7 +86,7 @@ Cookie 写入与首次主文档共享60秒预算，后续每次主文档导航�
 
 iOS CI 首先验证 framework 加载、Node/Worker、文件锁与 NSH bundle，然后验证完整 WebUI、认证门禁和故障恢复。提交的scripts/build-ios.py生成无签名设备archive与adhoc Simulator app；scripts/verify-ios.py只创建专用Simulator，验证真实WebUI/认证门、主文档提交后root文本与控件实际渲染、Worker故障恢复和锁释放，上传无凭据报告与截图。渲染指标不含页面内容，仅在专用Debug启动参数下采集。没有 Apple 签名配置时不把制品描述为可直接安装的 IPA。
 
-Android 继续执行 NSH 测试、JVM 恢复策略测试、完整 APK 构建、版本/ABI/16K 对齐和既有签名校验。迁移期间不操作包含用户身份的设备。
+Android 继续执行 NSH、JVM 恢复/浏览器租约/严格回调测试、Node 真实私有文件授权回归、完整 APK 构建及版本/ABI/16K/签名校验。系统唤醒、OEM 冻结、重建 Activity 与同代引擎交付必须在已授权真机验证；编译不能代替设备验收。
 
 ## 方案取舍
 

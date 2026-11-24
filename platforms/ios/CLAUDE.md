@@ -8,11 +8,12 @@ EngineOwner.swift: 唯一node_start/generation/恢复owner，按请求文件和d
 RecoveryPolicyTests.swift: 本地Swift行为回归，覆盖退避上限、前台健康清债与每次导航期限；不进入app target。
 RecoveryPolicy.swift: 有界退避与60秒健康窗口，不拥有调度器。
 PageLoadDeadline.swift: Cookie与首次页面共享60秒预算，后续主文档导航独立计时，以票据拒绝旧超时回调。
-WorkspaceController.swift: NshAppView 遮罩、Cookie store与主文档期限、WKWebView同源导航与页面独立恢复；前台复用时恢复健康计时，专用Debug验收等待DSH root渲染。
+WorkspaceController.swift: NshAppView 遮罩、Cookie store、主文档期限与同源页面恢复；OwnDsh 授权请求由强持有的 ASWebAuthenticationSession 处理 owndsh 唤回，其余链接走 Safari，专用Debug验收等待DSH root渲染。
 Runtime/: 常驻 Node supervisor；仅执行 revision 命令并等待旧 Worker 真正退出。
 Info.plist: iOS15、单窗口、loopback 网络许可与仅唤回的 owndsh URL scheme。
 Assets.xcassets/: 沿用 OwnDsh 黑鲸的 iOS1024图标。
 OwnDsh.xcodeproj/: 提交的常规 Xcode 工程和共享 scheme，链接静态 NSH，嵌入动态 Node/flock。
 
 原生只拥有平台能力与生命周期。Swift 不接收或实现 DSH 认证协议；ready Cookie 仅进入 WKHTTPCookieStore。
+系统授权会话只匹配原生请求的 `/enterprise/auth/v1/authorize`。`start()` 成功即确认浏览器交接；原插件继续通过 HTTP loopback 收取授权码，完成页的 `owndsh://open` 只结束系统授权会话。取消会清理原生容器，不新增插件取消协议。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

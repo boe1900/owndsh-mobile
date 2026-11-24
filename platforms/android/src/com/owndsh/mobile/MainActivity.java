@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 NshView、WebView、EngineService Messenger、RecoveryPolicy 与 NativeCapabilities 系统能力 owner
- * [OUTPUT]: 自动恢复真实 DSH；按主文档请求保留提前到达的 HTTP 故障，仅在成功页面提交后移除遮罩
+ * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback 与系统能力 owner
+ * [OUTPUT]: 自动恢复 DSH；原生浏览器请求优先 Custom Tabs，固定企业回调仅经当前绑定单次交付
  * [POS]: mobile Android UI owner，独占当前绑定、网页和唯一恢复任务；Service 继续独占 Node
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,6 +8,8 @@ package com.owndsh.mobile;
 
 import android.app.Activity;
 import android.content.*;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.*;
 import android.util.Log;
@@ -27,6 +29,7 @@ public final class MainActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final RecoveryPolicy policy = new RecoveryPolicy();
     private final ArrayDeque<String> backTargets = new ArrayDeque<>();
+    private final AuthorizationCallback.Pending authorization = new AuthorizationCallback.Pending();
     private final Runnable recover = this::performRecovery;
     private FrameLayout layout;
     private NshView shell;
@@ -70,7 +73,9 @@ public final class MainActivity extends Activity {
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         capabilities = new NativeCapabilities(this, () -> binding != null && !binding.stopping && binding.binder != null && binding.binder.isBinderAlive());
-        if (getIntent().getData() != null && !"owndsh://open".equals(getIntent().getDataString())) { destroyed = true; finish(); return; }
+        String incoming = getIntent().getDataString();
+        getIntent().setData(null);
+        if (incoming != null && !"owndsh://open".equals(incoming) && !authorization.offer(incoming)) { destroyed = true; finish(); return; }
         if (saved != null) {
             target = saved.getString("target", "/");
             ArrayList<String> history = saved.getStringArrayList("backTargets");
@@ -108,7 +113,7 @@ public final class MainActivity extends Activity {
                     if (request.isForMainFrame()) prepareNavigation(uri.toString());
                     return false;
                 }
-                if (request.isForMainFrame()) openExternal(uri.toString());
+                if (request.isForMainFrame()) openExternal(uri.toString(), false);
                 return true;
             }
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -275,6 +280,7 @@ public final class MainActivity extends Activity {
                     owner.cookie = data.getString("cookie", "");
                     if (visible) loadPage(); else recovery = Recovery.PAGE;
                 }
+                deliverAuthorizationCallback();
             }
             return true;
         }
@@ -282,7 +288,7 @@ public final class MainActivity extends Activity {
             Bundle result = new Bundle();
             result.putString("generation", incoming); result.putString("id", data.getString("id"));
             File request = new File(getCacheDir(), "run-" + incoming + "/browser-" + data.getString("id") + ".request");
-            result.putBoolean("ok", visible && System.currentTimeMillis() < data.getLong("deadline") && request.isFile() && openExternal(data.getString("url", "")));
+            result.putBoolean("ok", visible && System.currentTimeMillis() < data.getLong("deadline") && request.isFile() && openExternal(data.getString("url", ""), true));
             send(owner, EngineService.BROWSER_RESULT, result);
             return true;
         }
@@ -384,15 +390,38 @@ public final class MainActivity extends Activity {
         data.putBoolean("foreground", resumed);
         send(binding, EngineService.VISIBILITY, data);
     }
-    private boolean openExternal(String url) {
+    private boolean openExternal(String url, boolean customTab) {
         Uri uri = Uri.parse(url);
         if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null || uri.getUserInfo() != null) return false;
-        try { startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)); return true; }
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE);
+        if (customTab) {
+            PackageManager packages = getPackageManager();
+            ResolveInfo browser = packages.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+            if (browser != null && packages.resolveService(new Intent("android.support.customtabs.action.CustomTabsService").setPackage(browser.activityInfo.packageName), 0) != null) {
+                intent.setPackage(browser.activityInfo.packageName);
+                Bundle extras = new Bundle();
+                extras.putBinder("android.support.customtabs.extra.SESSION", null);
+                extras.putInt("android.support.customtabs.extra.TOOLBAR_COLOR", 0xff111111);
+                extras.putInt("android.support.customtabs.extra.TITLE_VISIBILITY", 1);
+                intent.putExtras(extras);
+            }
+        }
+        try { startActivity(intent); return true; }
         catch (ActivityNotFoundException error) { Toast.makeText(this, "未找到系统浏览器", Toast.LENGTH_LONG).show(); return false; }
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if ("owndsh://open".equals(intent.getDataString())) setIntent(intent);
+        String incoming = intent.getDataString();
+        intent.setData(null);
+        if (authorization.offer(incoming)) deliverAuthorizationCallback();
+    }
+    private void deliverAuthorizationCallback() {
+        Binding owner = binding;
+        if (owner == null || owner.stopping || owner.engine == null || owner.generation.isEmpty() || !owner.phase.equals("ready")) return;
+        AuthorizationCallback callback = authorization.take();
+        if (callback == null) return;
+        Bundle data = new Bundle(); data.putString("generation", owner.generation); data.putString("uri", callback.uri);
+        send(owner, EngineService.AUTH_CALLBACK, data);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -433,6 +462,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         destroyed = true;
+        authorization.clear();
         capabilities.destroy();
         pageEpoch++;
         main.removeCallbacksAndMessages(null);
