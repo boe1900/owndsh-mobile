@@ -47,6 +47,7 @@ HTTP 错误保留目标并显示只读中断说明，重新进入前台后再尝
 - 已登录时注入没有活动事务的合规形状回调，状态保持 `READY`，未创建授权事务。普通后台 UI 进程终结后引擎退出，重新打开应用通过已有凭据恢复 `READY`。
 - 取消真实登录事务后再交付同 state 的回调，状态保持 `CANCELLED / ENT_AUTH_CANCELLED`，请求租约已删除，未恢复登录。
 - 让真实授权在浏览器前台等满五分钟，再交付同 state 的过期回调。原引擎返回 `FAILED / ENT_AUTH_TIMEOUT`，请求租约及 started/foreground 资格已释放，未恢复登录。
+- 过期测试后再次以已有账号登录，实际观察到原引擎先进入 `do_freezer_trap`，固定回调随后自然唤回应用，同代引擎恢复执行并达到 `READY`。结束时已恢复原屏幕超时与插电息屏设置，并移除本轮 ADB 转发。
 
 另一次密码流程实际观察到原引擎处于 `do_freezer_trap`。原生回调成功唤回并解冻该引擎，Server 的 token/enroll/bootstrap 均返回200，但后续公网连接出现 `UND_ERR_CONNECT_TIMEOUT`，最终为 `ENT_PLATFORM_UNAVAILABLE`，后续调查见 [问题 #4](https://github.com/boe1900/owndsh-mobile/issues/4)。后续四次成功不能消除这条失败记录，也不证明公网连接稳定。临时网络诊断已撤除，成功复验使用未注入诊断的 APK 载荷。
 
