@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 npm lock 的独立目标暂存安装及固定 DSH/beta.22 的完整源码指纹
- * [OUTPUT]: 校验并适配 builtin、浏览器交接、Cookie 准入、flock 加载、原子发布与附件 UI 门禁；原协议和错误分类仍由上游持有
+ * [OUTPUT]: 校验并适配 builtin、企业回调/浏览器交接、Cookie 准入、flock、文件发布与附件门禁；原 PKCE/令牌协议仍由上游持有
  * [POS]: mobile 构建的失败关闭适配器，上游任何相关字节变化都要求重新评审
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -35,6 +35,8 @@ const patches = [
     installationAfter: 'await globalThis[Symbol.for("owndsh.mobile.publishExclusive")](temporary, path);\n    await rm(temporary, { force: true });',
     guardBefore: 'function isTrustedLocalRequest(request, webServer) {',
     guardAfter: 'function isTrustedLocalRequest(request, webServer) {\n  if (!globalThis[Symbol.for("owndsh.mobile.authorizeLocal")]?.(request)) return false;',
+    callbackBefore: '    const callback = await startLoopbackCallback({\n      expectedState: state,\n      timeoutMs: this.config.callbackTimeoutMs,\n      signal: transaction.abort.signal,\n      successRedirectUri: new URL("/authorized", baseUrl).toString()\n    });',
+    callbackAfter: '    const callback = await (globalThis[Symbol.for("owndsh.mobile.startAuthorizationCallback")] ?? startLoopbackCallback)({\n      expectedState: state,\n      timeoutMs: this.config.callbackTimeoutMs,\n      signal: transaction.abort.signal,\n      successRedirectUri: new URL("/authorized", baseUrl).toString()\n    }, PkceLoopbackError);',
   },
 ];
 for (const patch of patches) {
@@ -44,6 +46,7 @@ for (const patch of patches) {
   if (patch.secondBefore) changes.push([patch.secondBefore, patch.secondAfter]);
   if (patch.installationBefore) changes.push([patch.installationBefore, patch.installationAfter]);
   if (patch.guardBefore) changes.push([patch.guardBefore, patch.guardAfter]);
+  if (patch.callbackBefore) changes.push([patch.callbackBefore, patch.callbackAfter]);
   let original = source;
   for (const [before, after] of changes) original = original.replace(after, before);
   if (createHash('sha256').update(original).digest('hex') !== patch.hash) throw new Error(`Upstream source changed: ${patch.path}`);

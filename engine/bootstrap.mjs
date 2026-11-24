@@ -1,13 +1,14 @@
 /**
  * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与 native-request 私有代次传输
- * [OUTPUT]: 启动带纯文本附件准入的真实 Web profile，发布经过会话服务/preset/HTTP 核验的状态，复用原插件 PKCE 的浏览器接缝
- * [POS]: mobile/engine 的跨平台入口；平台仅提供路径与浏览器交接，不拥有 DSH 会话或认证令牌
+ * [OUTPUT]: 启动真实 Web profile 并核验就绪；显式广告时注册 Android 原生回调，继续复用插件 PKCE/令牌流
+ * [POS]: mobile/engine 的跨平台入口；平台只提供路径、浏览器和回调交付，不拥有 DSH 会话或认证令牌
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { mkdir, readFile, writeFile, rename, open, realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createNativeRequester } from './native-request.mjs';
+import { createNativeAuthorizationCallback } from './native-authorization.mjs';
 import { isMainThread } from 'node:worker_threads';
 import { parseRuntimeConfig } from './runtime-config.mjs';
 import { configureNativeStorage, publishExclusive, verifyNativeStorage } from './native-storage.mjs';
@@ -34,6 +35,9 @@ async function publish(state) { await writeAtomic('state.json', { generation, ..
 
 const requestNative = createNativeRequester({ generation, runDirectory });
 globalThis[Symbol.for('owndsh.mobile.request')] = requestNative;
+if (config.native.authorizationCallbackUri) {
+  globalThis[Symbol.for('owndsh.mobile.startAuthorizationCallback')] = (options, PkceLoopbackError) => createNativeAuthorizationCallback(options, PkceLoopbackError, requestNative);
+}
 globalThis[Symbol.for('owndsh.mobile.openSystemBrowser')] = async (url, signal) => {
   const parsed = new URL(url);
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Unsupported browser URL');

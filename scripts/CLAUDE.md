@@ -3,12 +3,12 @@
 
 成员清单
 fetch-vendors.py: 按 versions.json 取得和验证固定归档，恢复供应商文件权限并按平台生成SDK或iOS框架目录。
-build.py: appVersion 与构建/重试编号生成统一内部版本、APK 文件名和 build-info.json；独立build/android暂存的干净 npm ci、上游适配、NSH/恢复/浏览器租约回归、SDK/NDK 构建和 debug 签名后核验真实版本、16K 对齐及供应商输入。
-prepare-engine.mjs: 对完整源码 hash 固定的官方发布包做共享原生接缝适配，覆盖 Node builtin、系统浏览器、原始 Cookie 准入、文件发布和 composer 既有附件门禁；原协议仍由上游持有。
+build.py: 统一生成版本/APK 名/build-info.json；干净 npm ci、NSH/恢复/浏览器租约/原生授权回归后构建并验证签名、版本、ABI 和16K 对齐。
+prepare-engine.mjs: 完整源码 hash 固定的上游适配；企业 runLogin 独立接缝选择显式广告的 Android 原生回调，iOS/MCP 保留 loopback；原 PKCE/令牌协议仍属上游。
 verify-apk.py: aapt2 读取实际 versionName/versionCode 并核对可选预期值，从 APK 检查 ELF ABI、LOAD 对齐和 NEEDED 闭包，再核验 ZIP16K 与签名。
 verify-device.py: 从真实 Android 活进程读取私有状态，验证官方 WebUI、正确版本和未认证403/已认证200，不打印 Cookie。
 
-payload.py: 独立build/<platform>/engine npm安装、含手机插件子目录的确定性载荷与共享Cordis/传输测试；按格式排除桌面原生文件，排除测试源码，不拥有SDK或签名。
+payload.py: 独立 build/<platform>/engine npm 安装、确定性载荷与共享 Cordis/传输/原生授权测试；排除桌面原生文件和测试源码，不拥有 SDK 或签名。
 payload_test.py: 覆盖无扩展名 Mach-O/ELF、静态归档与可保留资源的移动载荷准入回归。
 build-ios.py: 校验完整供应商输入、直接编译锁定flock.c，构建arm64双目标并生成无签名archive及Simulator app。
 verify-ios.py: 核验真实bundle版本/切片/依赖/资源，创建专用Simulator实测WebUI、认证门、主文档提交及root渲染与Worker恢复后锁释放；报告不含Cookie或页面内容。

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge 与 BrowserWindowLease，读取真实引擎事件
- * [OUTPUT]: 提供代次隔离的私有路由；浏览器交接前取得有界 started 生命周期与 dataSync 前台资格，返回或终结时释放
+ * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge、BrowserWindowLease 和固定授权回调解析器
+ * [OUTPUT]: 提供代次隔离的私有路由；仅向同 state 的有效请求单次交付授权码，浏览器窗口独立持有有界 started/dataSync 资格
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -25,7 +25,7 @@ import java.util.*;
 import java.util.zip.ZipInputStream;
 
 public final class EngineService extends Service {
-    static final int ATTACH = 1, STOP = 2, STATE = 3, BROWSER = 4, BROWSER_RESULT = 5, VISIBILITY = 6, NATIVE_OPERATION = 7, NATIVE_RESULT = 8, NATIVE_CANCEL = 9;
+    static final int ATTACH = 1, STOP = 2, STATE = 3, BROWSER = 4, BROWSER_RESULT = 5, VISIBILITY = 6, NATIVE_OPERATION = 7, NATIVE_RESULT = 8, NATIVE_CANCEL = 9, AUTH_CALLBACK = 10;
     private static final long BACKGROUND_WINDOW_MILLIS = 10 * 60 * 1000L;
     private static final String BROWSER_CHANNEL = "browser-login";
     private static final int BROWSER_NOTIFICATION = 1;
@@ -33,6 +33,7 @@ public final class EngineService extends Service {
     private final Messenger inbox = new Messenger(new Handler(Looper.getMainLooper(), this::receive));
     private final String generation = UUID.randomUUID().toString();
     private final Map<String, JSONObject> nativeRequests = new HashMap<>();
+    private final Set<String> answeredRequests = new HashSet<>();
     private BrowserWindowLease browserWindow;
     private boolean foreground;
     private Messenger client;
@@ -70,6 +71,9 @@ public final class EngineService extends Service {
                             : NativeCapabilities.error("unavailable", "System browser could not be opened");
                     respond(id, result);
                 } catch (Exception error) { Log.e("OwnDsh", "native response failed", error); }
+                return true;
+            case AUTH_CALLBACK:
+                if (generation.equals(data.getString("generation"))) acceptAuthorizationCallback(data.getString("uri"));
                 return true;
             default: return false;
         }
@@ -129,7 +133,8 @@ public final class EngineService extends Service {
                 write(config, new JSONObject().put("generation", generation).put("runDirectory", runDirectory.getPath())
                         .put("home", home.getPath()).put("workspace", workspace.getPath())
                         .put("native", new JSONObject().put("flockPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_flock.so")
-                                .put("publication", "renameat2").put("publishPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_fs.so")).toString());
+                                .put("publication", "renameat2").put("publishPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_fs.so")
+                                .put("authorizationCallbackUri", AuthorizationCallback.URI)).toString());
                 main.post(this::poll);
                 int code = NodeBridge.start(new File(engine, "bootstrap.mjs").getPath(), config.getPath(), home.getPath());
                 main.post(() -> fail("Node exited with status " + code));
@@ -179,15 +184,29 @@ public final class EngineService extends Service {
                 && generation.equals(event.optString("generation")) && System.currentTimeMillis() < event.optLong("deadline") && requestFile(id).isFile();
     }
     private void respond(String id, JSONObject result) throws Exception {
-        if (!live(id)) return;
+        if (!live(id) || answeredRequests.contains(id)) return;
         result.put("generation", generation);
         File target = new File(runDirectory, "browser-" + id + ".response");
+        if (target.exists()) return;
         File temporary = new File(target.getPath() + ".tmp");
         Files.write(temporary.toPath(), result.toString().getBytes(StandardCharsets.UTF_8));
         Files.setPosixFilePermissions(temporary.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-        if (!live(id)) { temporary.delete(); return; }
+        if (!live(id) || target.exists()) { temporary.delete(); return; }
         if (!temporary.renameTo(target)) { if (!live(id)) return; throw new IOException("Cannot publish native response"); }
+        answeredRequests.add(id);
         if (!live(id)) target.delete();
+    }
+    private void acceptAuthorizationCallback(String uri) {
+        AuthorizationCallback callback = AuthorizationCallback.parse(uri);
+        if (callback == null || !phase.equals("ready")) return;
+        pollRequests();
+        for (Map.Entry<String, JSONObject> item : nativeRequests.entrySet()) {
+            JSONObject event = item.getValue();
+            if (!"authorization-callback".equals(event.optString("kind")) || !callback.state.equals(event.optString("state")) || !live(item.getKey())) continue;
+            try { respond(item.getKey(), new JSONObject().put("ok", true).put("data", new JSONObject().put("uri", callback.uri))); }
+            catch (Exception error) { Log.e("OwnDsh", "authorization callback delivery failed"); }
+            return;
+        }
     }
     private void pollRequests() {
         Iterator<Map.Entry<String, JSONObject>> prior = nativeRequests.entrySet().iterator();
@@ -198,7 +217,7 @@ public final class EngineService extends Service {
                 Bundle cancel = new Bundle(); cancel.putString("generation", generation); cancel.putString("id", item.getKey()); send(NATIVE_CANCEL, cancel);
                 new File(runDirectory, "browser-" + item.getKey() + ".response").delete();
                 new File(runDirectory, "browser-" + item.getKey() + ".response.tmp").delete();
-                if (!requestFile(item.getKey()).isFile()) prior.remove();
+                if (!requestFile(item.getKey()).isFile()) { answeredRequests.remove(item.getKey()); prior.remove(); }
             }
         }
         File[] files = runDirectory.listFiles((dir, name) -> name.matches("browser-[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\\.request"));
@@ -214,14 +233,20 @@ public final class EngineService extends Service {
                 if (!(rawDeadline instanceof Number)) throw new IllegalArgumentException("Missing request deadline");
                 long deadline = ((Number) rawDeadline).longValue(), now = System.currentTimeMillis();
                 if (deadline <= now) continue;
-                if (deadline > now + 120000 || ((Number) rawDeadline).doubleValue() != deadline) throw new IllegalArgumentException("Invalid request deadline");
-                nativeRequests.put(id, event);
                 String kind = event.optString("kind");
+                long limit = kind.equals("authorization-callback") ? 300000 : kind.equals("browser") ? 30000 : 120000;
+                if (deadline > now + limit || ((Number) rawDeadline).doubleValue() != deadline) throw new IllegalArgumentException("Invalid request deadline");
+                nativeRequests.put(id, event);
                 Set<String> allowed = new HashSet<>(Arrays.asList("generation", "id", "kind", "deadline"));
                 if (kind.equals("browser")) allowed.add("url");
                 if (kind.equals("mobile-operation")) allowed.addAll(Arrays.asList("operation", "arguments"));
+                if (kind.equals("authorization-callback")) allowed.add("state");
                 Iterator<String> keys = event.keys();
                 while (keys.hasNext()) if (!allowed.contains(keys.next())) throw new IllegalArgumentException("Unexpected request field");
+                if (kind.equals("authorization-callback")) {
+                    if (!AuthorizationCallback.validState(event.opt("state"))) throw new IllegalArgumentException("Invalid authorization state");
+                    continue;
+                }
                 if (kind.equals("capabilities")) { respond(id, new JSONObject().put("ok", true).put("data", NativeCapabilities.discovery())); continue; }
                 if (kind.equals("device-info")) {
                     respond(id, foreground ? new JSONObject().put("ok", true).put("data", NativeCapabilities.deviceInfo(this))

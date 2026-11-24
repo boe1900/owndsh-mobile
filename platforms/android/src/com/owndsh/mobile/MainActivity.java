@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 NshView、WebView、EngineService Messenger、默认浏览器能力与 NativeCapabilities 系统能力 owner
- * [OUTPUT]: 自动恢复真实 DSH；原生浏览器请求优先 Custom Tabs，普通网页外链沿用系统浏览器
+ * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback 与系统能力 owner
+ * [OUTPUT]: 自动恢复 DSH；原生浏览器请求优先 Custom Tabs，固定企业回调仅经当前绑定单次交付
  * [POS]: mobile Android UI owner，独占当前绑定、网页和唯一恢复任务；Service 继续独占 Node
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -29,6 +29,7 @@ public final class MainActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final RecoveryPolicy policy = new RecoveryPolicy();
     private final ArrayDeque<String> backTargets = new ArrayDeque<>();
+    private final AuthorizationCallback.Pending authorization = new AuthorizationCallback.Pending();
     private final Runnable recover = this::performRecovery;
     private FrameLayout layout;
     private NshView shell;
@@ -72,7 +73,9 @@ public final class MainActivity extends Activity {
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         capabilities = new NativeCapabilities(this, () -> binding != null && !binding.stopping && binding.binder != null && binding.binder.isBinderAlive());
-        if (getIntent().getData() != null && !"owndsh://open".equals(getIntent().getDataString())) { destroyed = true; finish(); return; }
+        String incoming = getIntent().getDataString();
+        getIntent().setData(null);
+        if (incoming != null && !"owndsh://open".equals(incoming) && !authorization.offer(incoming)) { destroyed = true; finish(); return; }
         if (saved != null) {
             target = saved.getString("target", "/");
             ArrayList<String> history = saved.getStringArrayList("backTargets");
@@ -277,6 +280,7 @@ public final class MainActivity extends Activity {
                     owner.cookie = data.getString("cookie", "");
                     if (visible) loadPage(); else recovery = Recovery.PAGE;
                 }
+                deliverAuthorizationCallback();
             }
             return true;
         }
@@ -407,7 +411,17 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if ("owndsh://open".equals(intent.getDataString())) setIntent(intent);
+        String incoming = intent.getDataString();
+        intent.setData(null);
+        if (authorization.offer(incoming)) deliverAuthorizationCallback();
+    }
+    private void deliverAuthorizationCallback() {
+        Binding owner = binding;
+        if (owner == null || owner.stopping || owner.engine == null || owner.generation.isEmpty() || !owner.phase.equals("ready")) return;
+        AuthorizationCallback callback = authorization.take();
+        if (callback == null) return;
+        Bundle data = new Bundle(); data.putString("generation", owner.generation); data.putString("uri", callback.uri);
+        send(owner, EngineService.AUTH_CALLBACK, data);
     }
     @Override protected void onResume() {
         super.onResume();
@@ -448,6 +462,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         destroyed = true;
+        authorization.clear();
         capabilities.destroy();
         pageEpoch++;
         main.removeCallbacksAndMessages(null);

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖真实临时私有文件、AbortController 与 native-request 传输
- * [OUTPUT]: 验证请求元数据、成功/结构化拒绝、超时/取消清理和过期响应拒绝
+ * [OUTPUT]: 验证请求元数据、发布确认、各 kind 期限、结构化拒绝与取消/超时清理
  * [POS]: 共享私有 IPC 边界回归，取消通过撤销真实请求文件验证，不增加产品控制入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -57,4 +57,20 @@ test('cancellation and timeout revoke the real request lease', () => fixture(asy
   assert.deepEqual(await readdir(directory), []);
   await assert.rejects(request('mobile-operation', {}, AbortSignal.abort()), error => error.name === 'AbortError');
   assert.deepEqual(await readdir(directory), []);
+}));
+test('publication acknowledgement sees the real lease and only authorization can wait five minutes', () => fixture(async directory => {
+  const request = createNativeRequester({ generation: 'current', runDirectory: directory, pollInterval: 2 });
+  for (const [kind, budget] of [['authorization-callback', 300000], ['browser', 30000], ['mobile-operation', 120000]]) {
+    const abort = new AbortController();
+    let publish;
+    const published = new Promise(resolve => { publish = resolve; });
+    const start = Date.now();
+    const pending = request(kind, {}, abort.signal, { timeoutMs: 500000, onPublished: publish });
+    const rejected = assert.rejects(pending, error => error.name === 'AbortError');
+    await published;
+    const event = JSON.parse(await readFile(await requestFile(directory), 'utf8'));
+    assert.ok(event.deadline >= start + budget && event.deadline <= Date.now() + budget);
+    abort.abort(); await rejected;
+    assert.deepEqual(await readdir(directory), []);
+  }
 }));

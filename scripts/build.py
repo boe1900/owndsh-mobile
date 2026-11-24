@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # [INPUT]: versions.json 基础版本与工具锁、构建编号、npm lock、经核验的 Android SDK/NDK、JDK、NSH AAR 和图标资源
-# [OUTPUT]: 经过恢复/浏览器租约回归的 arm64 APK、SHA256、统一版本 build-info.json 和二进制审计清单
+# [OUTPUT]: 经过恢复/浏览器租约/原生授权回归的 arm64 APK、SHA256、统一版本 build-info.json 和二进制审计清单
 # [POS]: mobile 可复现构建入口；生成资产仅写 build/，直接使用 Android 官方工具避免隐式 Gradle 下载
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, zipfile, tarfile
@@ -113,6 +113,9 @@ run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.RecoveryPoli
 run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests,
      ROOT / 'platforms/android/src/com/owndsh/mobile/BrowserWindowLease.java', ROOT / 'platforms/android/BrowserWindowLeaseTest.java'])
 run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.BrowserWindowLeaseTest'])
+run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests,
+     ROOT / 'platforms/android/src/com/owndsh/mobile/AuthorizationCallback.java', ROOT / 'platforms/android/AuthorizationCallbackTest.java'])
+run([args.jdk / 'bin/java', '-cp', policy_tests, 'com.owndsh.mobile.AuthorizationCallbackTest'])
 run([args.jdk / 'bin/javac', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-d', policy_tests,
      ROOT / 'platforms/android/src/com/owndsh/mobile/capabilities/MobileOperation.java',
      ROOT / 'platforms/android/src/com/owndsh/mobile/capabilities/RequestLease.java', ROOT / 'platforms/android/NativeCapabilitiesTest.java'])

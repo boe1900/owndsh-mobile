@@ -5,7 +5,7 @@ Java 17 + Swift/UIKit + Android WebView/WKWebView + NSH 0.6.1 + digidem Node Mob
 <directory>
 .github/ - Android测试APK发行与iOS无签名双目标构建、真实Simulator验收和30天证据产物
 platforms/ - Android Activity/Service/JNI 与 iOS UIKit/WKWebView/EngineOwner，系统适配集中在各端
-engine/ - 锁定 npm 载荷，复用官方 profile、PKCE、模型和 JSONL；mobile-native 独立插件按平台广告注册手机工具，native-request 只拥有私有传输寿命
+engine/ - 锁定 npm 载荷与官方 PKCE/令牌流；native-authorization 按宿主广告适配 Android 企业回调，mobile-native 独立注册手机工具
 shell/ - NSH 全屏只读加载遮罩，仅接收无凭据阶段与 runtime.status，主页面提交后隐藏
 scripts/ - 供应商归档校验、受 hash 约束的上游适配、独立目标载荷、Android APK/iOS archive构建与运行验收入口
 licenses/ - NSH、Node Mobile 与 NDK 法律声明，npm 包 LICENSE 随 engine.zip 保留
@@ -28,7 +28,7 @@ Android 启动图标沿用 OwnDsh 黑底白鲸，res 提供自适应、单色与
 
 应用版本由 appVersion 与构建/重试编号在 build.py 中统一生成，注入 APK 并校验实际 manifest；文件名、SHA256、artifact 与 Release 消费同一 build-info.json，不在 workflow 复制版本公式。versionCode 按构建编号 × 1000 + 重试编号递增，保持同签名更新兼容。
 
-Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity 持有绑定、页面与唯一恢复计时器，以绑定、generation 和页面代次拒绝迟到结果。Android 原生浏览器授权优先 Custom Tabs，Service 在交接前取得最长10分钟的 started 生命周期与 dataSync 前台资格，授权期间 UI 进程被回收不会因解绑终止引擎。返回应用或引擎终结时释放两项资格，START_NOT_STICKY 禁止系统重启授权引擎；普通后台仅靠绑定存活，不常驻前台服务。没有浏览器窗口时 Activity 销毁会终止引擎，后台窗口到期也终止；前台故障自动退避恢复，后台不循环重启。
+Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity 持有绑定、页面与唯一恢复计时器，以绑定、generation 和页面代次拒绝迟到结果。Android 浏览器授权优先 Custom Tabs，交接前取得最长10分钟的 started/dataSync 资格以保留引擎所有权；这些资格不保证 OPPO 后台执行。企业登录通过固定 com.owndsh.mobile://oauth/callback 先唤醒 Activity，再经同代/state/live 的单次私有 IPC 交付 Node，PKCE/令牌仍由原插件持有。仅 hash 锁定的企业 callback 工厂被适配，iOS/MCP 保持 loopback。返回应用或引擎终结释放浏览器资格，START_NOT_STICKY 禁止系统重启授权引擎；普通后台仅靠绑定存活，前台故障退避恢复，后台不循环重启。
 
 手机系统操作只经现有私有文件 IPC/Binder。Android capabilities 单 owner 集中白名单参数、前台条件、权限与用户确认；取消/超时/换代撤销未执行请求。共享手机插件属于本仓库，与业务 owndsh-plugin 分开。iOS 仅广告 device_info，其他操作待平台实现，详见 mobile-capabilities.md。
 

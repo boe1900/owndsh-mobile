@@ -4,7 +4,7 @@
 
 手机内运行真实 DSH `0.2.2-rc.5` + `owndsh-plugin@0.1.0-beta.22`。NSH `0.6.1` 呈现全屏加载遮罩，官方WebUI运行在Android WebView或iOS WKWebView。Node 来自 digidem Node Mobile `24.20.0-0`；不包含 Ubuntu、Fish 或 DshGo 代码。
 
-首版目标是 Android 9+ arm64。实际设备验收记录以 API35 arm64 模拟器为准，Android 9 真机尚未覆盖。Java/SDK 构建基线为 JDK17、compile/target35、build-tools35.0.0、NDK r27b；当前脚本运行于 macOS arm64。
+首版目标是 Android 9+ arm64。已验收 API35 arm64 模拟器，以及 OPPO Find X6 / Android15 / Edge155 的企业登录；Android 9 真机尚未覆盖。Java/SDK 构建基线为 JDK17、compile/target35、build-tools35.0.0、NDK r27b；当前脚本运行于 macOS arm64。真机范围与公网失败记录见 [生命周期验收](lifecycle-design.md#oppo-真机验收)。
 
 ## 从 GitHub 下载
 
@@ -50,13 +50,13 @@ python3 scripts/verify-device.py --adb /path/to/adb --output build/device-verifi
 
 就绪必须同时满足：活 engine PID 与代次一致、Node/DSH/插件版本正确、官方会话控制器与附件准入服务激活、mobile preset 的官方组成诊断无错误、官方 HTML 含 `__DSH_BOOT__`、插件安装身份完成、真实 Cookie 交换成功、匿名本机 API 被403拒绝、已认证 API返回beta.22。Android 启动还验证真实 flock 争用/释放以及不覆盖文件发布冲突。验证脚本不打印凭据。
 
-页面配置已有 OwnDsh Server 后，原插件 PKCE 在系统浏览器授权、同手机 loopback 回调。`owndsh://open` 只唤回应用，不携带认证信息。浏览器 Cookie 与本机 WebView Cookie 各归原有认证协议。远程工作区只通过 DSH 自有入口进入，不提供原生 Console 入口，也不复制 Remote 协议。
+Android 企业登录在系统浏览器授权后，以固定 `com.owndsh.mobile://oauth/callback` 唤醒应用，再由私有 IPC 把授权码交回 Node。服务端及 Console 必须精确允许此回调用于原 `dsh-desktop` 客户端。PKCE、一次性授权码和令牌交换仍由原插件/服务端拥有；原生不持有 verifier 或令牌。`owndsh://open` 仍为不携带认证信息的普通返回入口。iOS 和 MCP 继续使用原 loopback，浏览器 Cookie 与 WebView Cookie 各归原认证协议。远程工作区只通过 DSH 自有入口进入。
 
 ## 生命周期与能力
 
 Service 是唯一引擎 owner，运行在非导出的 `:engine` 进程。一次进程只启动一次 Node；停止后等待 Binder death 才建立下一代。Service 的引擎消息带 generation，Activity 以当前绑定和代次拒绝迟到结果。打开应用自动启动真实 DSH；启动失败、Node 退出、Binder death 后自动恢复，旧进程死亡前不会绑定下一代。恢复只有一个主线程延迟任务，连续失败依次等待1、2、4、8、16、30秒，此后每5分钟继续尝试；主页面持续健康60秒才清除失败负债，ready 本身不清债。后台取消恢复任务，返回前台继续恢复。
 
-原生浏览器授权优先 Custom Tabs，交接前由 Service 获得最长10分钟的 started 生命周期与 dataSync 前台资格，授权中的 UI 进程被回收不会因解绑关闭 loopback 回调。返回应用或引擎终结时撤销两项资格，由 Activity 绑定继续持有同代引擎；不为登录另行申请通知权限。START_NOT_STICKY 禁止系统重启中断的授权。浏览器登录不会因 Activity.onStop 解绑定；旋转保持 Activity，没有浏览器窗口时 Activity 销毁结束引擎，临时后台窗口最长10分钟。普通后台无 started 所有权或常驻前台服务，系统仍可回收进程或限制联网。
+原生浏览器授权优先 Custom Tabs，Service 交接前获得最长10分钟的 started/dataSync 资格，使授权中的 UI 进程被回收后引擎仍有 owner。这些资格无法保证 OPPO 后台执行，因此企业回调先唤醒 Activity，随后匹配当前 generation、state、期限与真实请求租约；授权回调至多等待五分钟，取消/超时撤销租约，迟到/无活动/重复回调不恢复认证。回调仅在内存中等待绑定，不加载到 WebView 或存入实例状态/日志。返回前台或引擎终结释放两项资格，START_NOT_STICKY 禁止系统重启授权引擎。普通后台仍无 started 所有权或常驻前台服务，系统可回收或限制进程。
 
 DSH占满可用屏幕，保留系统栏安全区域与adjustResize键盘行为。NSH只显示无凭据加载阶段，没有启动、重试、停止或Console按钮；只有真实WebView主文档提交才能撤下遮罩。网页进程退出时销毁并重建WebView，复用健康Node，恢复同一同源路径、查询与片段。主文档网络错误按相同退避重载，60秒未提交也进入恢复；子资源、业务fetch与远程断线不触发重载。HTTP错误保留目标并显示只读中断说明，下次前台返回再尝试，不吞404回到本机根页。重建前保存同源返回历史，系统后退仍可回到前一工作区；Activity保存实例时只记录路径和返回目标，不保存引擎端口或认证信息。
 
