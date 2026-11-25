@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 宿主生成的私有 RuntimeConfig JSON
- * [OUTPUT]: 验证代次、绝对路径、原生绑定与可选固定授权回调广告，阻止隐式平台猜测
+ * [OUTPUT]: 验证代次、路径、绑定及可选的固定授权回调与图片编解码绑定
  * [POS]: 共享入口的信任边界；两端使用同一协议和存储接缝
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -15,5 +15,6 @@ export function parseRuntimeConfig(value) {
   if (!native || !['link', 'renameat2'].includes(native.publication) || typeof native.flockPath !== 'string' || !isAbsolute(native.flockPath)) throw new Error('Invalid native storage configuration');
   if (native.publication === 'renameat2' && (typeof native.publishPath !== 'string' || !isAbsolute(native.publishPath))) throw new Error('Invalid publication binding');
   if ('authorizationCallbackUri' in native && native.authorizationCallbackUri !== AUTHORIZATION_CALLBACK_URI) throw new Error('Invalid native authorization callback');
+  if ('imageCodecPath' in native && (native.publication !== 'renameat2' || typeof native.imageCodecPath !== 'string' || !isAbsolute(native.imageCodecPath))) throw new Error('Invalid native image codec path');
   return value;
 }

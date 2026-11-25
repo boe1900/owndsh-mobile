@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖锁定 DSH profile-boot、官方 connection Cookie 交换与 native-request 私有代次传输
- * [OUTPUT]: 启动真实 Web profile 并核验就绪；显式广告时注册 Android 原生回调，继续复用插件 PKCE/令牌流
+ * [OUTPUT]: 启动并核验真实 Web profile；按宿主绑定启用 Android 图片、文件和原生授权回调
  * [POS]: mobile/engine 的跨平台入口；平台只提供路径、浏览器和回调交付，不拥有 DSH 会话或认证令牌
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -49,6 +49,14 @@ try {
   configureNativeStorage(config.native);
   globalThis[Symbol.for('owndsh.mobile.publishExclusive')] = publishExclusive;
   const nativeStorage = await verifyNativeStorage(runDirectory);
+  const attachmentsEnabled = config.native.imageCodecPath !== undefined;
+  if (attachmentsEnabled) {
+    const module = { exports: {} };
+    process.dlopen(module, config.native.imageCodecPath);
+    const { inspect, encode } = module.exports;
+    if (typeof inspect !== 'function' || typeof encode !== 'function') throw new Error('Invalid Android image codec binding');
+    globalThis[Symbol.for('owndsh.mobile.imageCodec')] = { inspect, encode };
+  }
   if (config.runtimeTest) {
     const { tryLockExclusive } = await import('@deepseek-ai/node-addon-system/flock');
     const held = await open(join(runDirectory, 'worker-held.lock'), 'a');
@@ -68,7 +76,15 @@ try {
   initProfile(profileDirectory, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'owndsh-plugin']);
   const overlay = join(runDirectory, 'mobile.patch.yml');
   const overlaySource = await readFile(join(root, 'mobile.patch.yml'), 'utf8');
-  await writeFile(overlay, overlaySource.replace('MOBILE_SHELL_FILE', pathToFileURL(join(root, 'unavailable-shell.mjs')).href).replace('MOBILE_NATIVE_TOOL_FILE', pathToFileURL(join(root, 'mobile-native/index.mjs')).href).replace('MOBILE_ATTACHMENTS_FILE', pathToFileURL(join(root, 'text-only-attachments.mjs')).href));
+  await writeFile(overlay, overlaySource
+    .replace('MOBILE_SHELL_FILE', pathToFileURL(join(root, 'unavailable-shell.mjs')).href)
+    .replace('MOBILE_NATIVE_TOOL_FILE', pathToFileURL(join(root, 'mobile-native/index.mjs')).href)
+    .replace('MOBILE_ATTACHMENTS_FILE', pathToFileURL(join(root, attachmentsEnabled ? 'android-attachments.mjs' : 'text-only-attachments.mjs')).href)
+    .replace('MOBILE_ATTACHMENTS_DISABLED', String(!attachmentsEnabled))
+    .replace('MOBILE_ATTACHMENTS_ENABLED', String(attachmentsEnabled))
+    .replace('MOBILE_ATTACHMENTS_INSTRUCTIONS', attachmentsEnabled
+      ? 'Use attached images and read_image when the model supports images. Read attached text files through their supplied file references.'
+      : 'Attachments and workspace image reading are unavailable.'));
   const anchor = join(root, 'package.json');
   const profile = loadProfileDirectory('owndsh-mobile', profileDirectory, anchor);
   if (profile.skippedBundles.length) throw new Error(JSON.stringify(profile.skippedBundles));

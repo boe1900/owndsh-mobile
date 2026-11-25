@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge、BrowserWindowLease 和固定授权回调解析器
- * [OUTPUT]: 提供代次隔离的私有路由；仅向同 state 的有效请求单次交付授权码，浏览器窗口独立持有有界 started/dataSync 资格
+ * [OUTPUT]: 提供本机附件编解码绑定与代次隔离的私有路由；浏览器窗口持有有界 started/dataSync 资格
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -134,7 +134,8 @@ public final class EngineService extends Service {
                         .put("home", home.getPath()).put("workspace", workspace.getPath())
                         .put("native", new JSONObject().put("flockPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_flock.so")
                                 .put("publication", "renameat2").put("publishPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_fs.so")
-                                .put("authorizationCallbackUri", AuthorizationCallback.URI)).toString());
+                                .put("authorizationCallbackUri", AuthorizationCallback.URI)
+                                .put("imageCodecPath", getApplicationInfo().sourceDir + "!/lib/arm64-v8a/libowndsh_node.so")).toString());
                 main.post(this::poll);
                 int code = NodeBridge.start(new File(engine, "bootstrap.mjs").getPath(), config.getPath(), home.getPath());
                 main.post(() -> fail("Node exited with status " + code));

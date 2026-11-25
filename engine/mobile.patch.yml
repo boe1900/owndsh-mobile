@@ -1,5 +1,5 @@
 # [INPUT]: 官方 base/web/beta.22 profile 行、preset 服务隔离契约与 Android 无桌面子进程/PTY 的能力边界
-# [OUTPUT]: 以 mobile 为默认会话 preset，保留文本文件与 WebUI，关闭桌面命令和不可用附件能力
+# [OUTPUT]: 以 mobile 为默认会话 preset，保留官方 WebUI，并按宿主能力选择附件存储和界面
 # [POS]: mobile 引擎的官方 profile overlay，不复制上游会话或模型协议
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 - id: web-runtime
@@ -28,7 +28,7 @@
 - id: attachment-local
   disabled: true
 - id: ui-attachment
-  disabled: true
+  disabled: MOBILE_ATTACHMENTS_DISABLED
 - id: agent-preset-registry
   config:
     default: mobile
@@ -55,7 +55,7 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              prefix: You are a helpful assistant running inside a mobile application. You can read and edit text files in the private workspace. Native mobile tools are available only when advertised by this device. System editors return opened, not proof of saving, sending or calling. Bash, PTY, desktop applications, office rendering, image reading, and attachments are unavailable.
+              prefix: You are a helpful assistant running inside a mobile application. You can read and edit text files in the private workspace. Native mobile tools are available only when advertised by this device. System editors return opened, not proof of saving, sending or calling. Bash, PTY, desktop applications, and office rendering are unavailable. MOBILE_ATTACHMENTS_INSTRUCTIONS
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -66,7 +66,7 @@
             name: '@deepseek-ai/dsh-tool-fs'
             config:
               applyPatch: false
-              readImage: false
+              readImage: MOBILE_ATTACHMENTS_ENABLED
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
           - id: tool-mobile-native
