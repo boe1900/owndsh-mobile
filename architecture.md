@@ -70,7 +70,7 @@ JSONL、lease、inode、fsync 和权限仍由 DSH 持有。Android 保留 rename
 
 Android 的原生 browser 请求优先使用默认浏览器的 Custom Tabs，复用浏览器账号状态；默认浏览器未声明 CustomTabsService 时回退普通 ACTION_VIEW。展示 extras 不创建真实服务 session 或保活绑定，不能单独阻止 Android 后台限网。Service 在交接前先 startService 自身，再取得 dataSync 前台资格并持有单个浏览器窗口，最长10分钟；任一步失败都清理已取得的资格并拒绝交接。pending 请求全部失败/取消且没有已打开浏览器时撤销保护，成功交接后30秒原生传输租约结束不会撤销保护。返回应用、引擎停止/失败/销毁或系统FGS超时统一 stopForeground 和 stopSelf。普通 WebView 外链不取得此窗口，普通后台无 started 所有权或常驻前台服务。
 
-Android 企业登录由 `native-authorization.mjs` 保留原 `{redirectUri,result,cancel}` 契约。hash 锁定的 prepare-engine 只替换 beta.22 企业 runLogin 的 callback 工厂，并传入原 PkceLoopbackError；没有广告时仍调用上游 loopback，MCP 的工厂不变。Node 先原子发布 `authorization-callback` 请求（仅额外 state），再允许打开浏览器。固定 scheme 先唤醒 MainActivity，单槽内存只等当前绑定就绪，随后私有 AUTH_CALLBACK 消息携带 uri/generation。Service 接收时先扫描已发布文件，再以同代/live/state 匹配并单次写入 `{uri}` 响应。两端均拒绝未知/重复字段、非固定 URI、userinfo/port/fragment 和过大输入；只允许 code+state 或 access_denied+state。Node 再验证 state 后交给原令牌交换，取消/超时删除租约；无活动、旧代和重放不可复活认证。原生不拥有 verifier/令牌，不把回调保留在启动 Intent、实例保存状态、WebView 或日志。服务端/Console 必须只为既有 dsh-desktop 精确放行该 URI，兑换仍绑定原 redirectUri、installation 和 S256。
+Android 企业登录由 `native-authorization.mjs` 保留原 `{redirectUri,result,cancel}` 契约。hash 锁定的 prepare-engine 只替换 beta.23 企业 runLogin 的 callback 工厂，并传入原 PkceLoopbackError；没有广告时仍调用上游 loopback，MCP 的工厂不变。Node 先原子发布 `authorization-callback` 请求（仅额外 state），再允许打开浏览器。固定 scheme 先唤醒 MainActivity，单槽内存只等当前绑定就绪，随后私有 AUTH_CALLBACK 消息携带 uri/generation。Service 接收时先扫描已发布文件，再以同代/live/state 匹配并单次写入 `{uri}` 响应。两端均拒绝未知/重复字段、非固定 URI、userinfo/port/fragment 和过大输入；只允许 code+state 或 access_denied+state。Node 再验证 state 后交给原令牌交换，取消/超时删除租约；无活动、旧代和重放不可复活认证。原生不拥有 verifier/令牌，不把回调保留在启动 Intent、实例保存状态、WebView 或日志。服务端/Console 必须只为既有 dsh-desktop 精确放行该 URI，兑换仍绑定原 redirectUri、installation 和 S256。
 
 iOS 使用 UIKit 的 NshAppView 和 WKWebView，不重写 SwiftUI 业务界面。当前代 Cookie 经 WKHTTPCookieStore 写入完成后才导航。就绪 origin 必须为当前 http://127.0.0.1 随机端口；同源页面留在 WebView，外部 HTTP(S) 链接交给系统浏览器容器，其余 scheme 拒绝。所有异步回调检查代次与页面身份。
 
@@ -78,7 +78,7 @@ WebKit 内容进程退出只恢复页面。业务请求失败、远程工作区�
 
 Cookie 写入与首次主文档共享60秒预算，后续每次主文档导航使用独立60秒期限；导航票据使旧计时器无法中断新页面。前台探测成功并复用已提交页面时重新开始健康窗口，不强制重建页面。HTTP中断后边缘返回可恢复前一同源目标。
 
-插件 beta.22 使用 HTTP loopback PKCE 回调。iOS 仅对原生 browser 请求中的 `/enterprise/auth/v1/authorize` 使用非临时 ASWebAuthenticationSession；收到完成页既有 `owndsh://open` 后结束系统授权容器，授权码继续只交给原 loopback。普通网页和其他 OAuth 地址由 SFSafariViewController 承载。容器启动成功即确认原生交接，不占用整个登录过程；真实设备上的企业登录、取消和返回需单独验收。
+插件 beta.23 使用 HTTP loopback PKCE 回调。iOS 仅对原生 browser 请求中的 `/enterprise/auth/v1/authorize` 使用非临时 ASWebAuthenticationSession；收到完成页既有 `owndsh://open` 后结束系统授权容器，授权码继续只交给原 loopback。普通网页和其他 OAuth 地址由 SFSafariViewController 承载。容器启动成功即确认原生交接，不占用整个登录过程；真实设备上的企业登录、取消和返回需单独验收。
 
 ## 构建与验证
 

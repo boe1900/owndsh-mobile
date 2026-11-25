@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 npm lock 的独立目标暂存安装及固定 DSH/beta.22 的完整源码指纹
+ * [INPUT]: 依赖 npm lock 的独立目标暂存安装及固定 DSH/beta.23 的完整源码指纹
  * [OUTPUT]: 校验并适配 builtin、企业回调、Cookie 准入、flock、Android 附件发布和图片编解码
  * [POS]: mobile 构建的失败关闭适配器，上游任何相关字节变化都要求重新评审
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -89,7 +89,7 @@ async function mobileImageMetadata(data, limits) {
   },
   {
     path: 'node_modules/owndsh-plugin/lib/index.js',
-    hash: '8d6e4746e449fd09586ded9584aedbe47c6aefe3d7ef92b4f6a5eae8ca46f3a8',
+    hash: 'a8d3713bab490c0cf82fa46b1eba1673ee921b08c31b56030c8ccf8560b5049e',
     before: 'async function openSystemBrowser(url2, signal) {',
     after: 'async function openSystemBrowser(url2, signal) {\n  return globalThis[Symbol.for("owndsh.mobile.openSystemBrowser")](url2, signal);',
     installationBefore: 'await link(temporary, path);\n    await rm(temporary);',

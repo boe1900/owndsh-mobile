@@ -2,7 +2,7 @@
 
 [手机端仓库](https://github.com/boe1900/owndsh-mobile) · [OwnDsh 服务端与插件](https://github.com/boe1900/owndsh) · [桌面客户端](https://github.com/boe1900/owndsh-desktop)
 
-手机内运行真实 DSH `0.2.2-rc.5` + `owndsh-plugin@0.1.0-beta.22`。NSH `0.6.1` 呈现全屏加载遮罩，官方WebUI运行在Android WebView或iOS WKWebView。Node 来自 digidem Node Mobile `24.20.0-0`；不包含 Ubuntu、Fish 或 DshGo 代码。
+手机内运行真实 DSH `0.2.2-rc.5` + `owndsh-plugin@0.1.0-beta.23`。NSH `0.6.1` 呈现全屏加载遮罩，官方WebUI运行在Android WebView或iOS WKWebView。Node 来自 digidem Node Mobile `24.20.0-0`；不包含 Ubuntu、Fish 或 DshGo 代码。
 
 首版目标是 Android 9+ arm64。已验收 API35 arm64 模拟器，以及 OPPO Find X6 / Android15 / Edge155 的企业登录；Android 9 真机尚未覆盖。Java/SDK 构建基线为 JDK17、compile/target35、build-tools35.0.0、NDK r27b；当前脚本运行于 macOS arm64。真机范围与公网失败记录见 [生命周期验收](lifecycle-design.md#oppo-真机验收)。
 
@@ -48,7 +48,7 @@ python3 scripts/verify-device.py --adb /path/to/adb --output build/device-verifi
 /tmp/owndsh-android-build-tools/nsh-cli/nsh/bin/nsh test shell
 ```
 
-就绪必须同时满足：活 engine PID 与代次一致、Node/DSH/插件版本正确、官方会话控制器与附件准入服务激活、mobile preset 的官方组成诊断无错误、官方 HTML 含 `__DSH_BOOT__`、插件安装身份完成、真实 Cookie 交换成功、匿名本机 API 被403拒绝、已认证 API返回beta.22。Android 启动还验证真实 flock 争用/释放以及不覆盖文件发布冲突。验证脚本不打印凭据。
+就绪必须同时满足：活 engine PID 与代次一致、Node/DSH/插件版本正确、官方会话控制器与附件准入服务激活、mobile preset 的官方组成诊断无错误、官方 HTML 含 `__DSH_BOOT__`、插件安装身份完成、真实 Cookie 交换成功、匿名本机 API 被403拒绝、已认证 API返回beta.23。Android 启动还验证真实 flock 争用/释放以及不覆盖文件发布冲突。验证脚本不打印凭据。
 
 Android 企业登录在系统浏览器授权后，以固定 `com.owndsh.mobile://oauth/callback` 唤醒应用，再由私有 IPC 把授权码交回 Node。服务端及 Console 必须精确允许此回调用于原 `dsh-desktop` 客户端。PKCE、一次性授权码和令牌交换仍由原插件/服务端拥有；原生不持有 verifier 或令牌。`owndsh://open` 仍为不携带认证信息的普通返回入口。iOS 和 MCP 继续使用原 loopback，浏览器 Cookie 与 WebView Cookie 各归原认证协议。远程工作区只通过 DSH 自有入口进入。
 
@@ -103,6 +103,6 @@ python3 scripts/verify-ios.py \
 
 Swift EngineOwner是唯一generation/前后台/退避owner；Node主线程先设置cwd，仅执行单调revision的run/stop，并在旧Worker真正退出后启动下一代。健康Worker随系统挂起，后台取消重试，前台探测健康后复用或恢复。Worker可隔离JS退出；native崩溃/OOM需要下一次真正进程启动恢复，不能再次node_start。
 
-Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。OwnDsh 企业登录使用非临时 ASWebAuthenticationSession，沿用 beta.22 的 HTTP loopback PKCE；完成页 owndsh://open 只结束授权容器，不接收授权码。普通网页和其他 OAuth 继续使用 SFSafariViewController。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
+Cookie仅通过WKHTTPCookieStore写入当前代loopback origin；所有异步回调按generation与页面身份过滤。Renderer退出只恢复页面。OwnDsh 企业登录使用非临时 ASWebAuthenticationSession，沿用 beta.23 的 HTTP loopback PKCE；完成页 owndsh://open 只结束授权容器，不接收授权码。普通网页和其他 OAuth 继续使用 SFSafariViewController。真实设备企业登录/取消/返回、系统挂起和键盘仍需设备验收，Simulator通过不能代替。
 
 Cookie写入和首次页面共用60秒期限，后续主文档导航各自重新计时，旧计时器不能打断新页面。前台复用已提交的健康页面会恢复60秒清债窗口；HTTP中断后可通过边缘返回恢复前一同源工作区。Simulator验收还等待DSH root出现文本和控件、完成动画帧后再截图，渲染报告仅保存数量与尺寸。

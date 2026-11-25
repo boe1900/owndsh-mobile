@@ -1,4 +1,4 @@
-# [INPUT]: 官方 base/web/beta.22 profile 行、preset 服务隔离契约与 Android 无桌面子进程/PTY 的能力边界
+# [INPUT]: 官方 base/web/beta.23 profile 行、preset 服务隔离契约与 Android 无桌面子进程/PTY 的能力边界
 # [OUTPUT]: 以 mobile 为默认会话 preset，保留官方 WebUI，并按宿主能力选择附件存储和界面
 # [POS]: mobile 引擎的官方 profile overlay，不复制上游会话或模型协议
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
