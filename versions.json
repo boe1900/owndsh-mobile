@@ -4,7 +4,7 @@
   "nsh": "0.6.1",
   "nodeMobile": "24.20.0-0",
   "harness": "0.2.2-rc.5",
-  "ownDshPlugin": "0.1.0-beta.22",
+  "ownDshPlugin": "0.1.0-beta.23",
   "android": {
     "compileSdk": 35,
     "targetSdk": 35,

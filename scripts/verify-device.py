@@ -20,7 +20,7 @@ for attempt in range(120):
     time.sleep(1)
 if not state: raise SystemExit('No live DSH engine reached ready within 120 seconds')
 assert state.get('nativeStorage') == 'flock+renameat2', 'Native storage check missing'
-assert state['node'] == 'v24.20.0' and state['harness'] == '0.2.2-rc.5' and state['plugin'] == '0.1.0-beta.22', 'Version mismatch'
+assert state['node'] == 'v24.20.0' and state['harness'] == '0.2.2-rc.5' and state['plugin'] == '0.1.0-beta.23', 'Version mismatch'
 port = state['origin'].rsplit(':', 1)[1]
 forward = adb('forward', 'tcp:0', 'tcp:' + port)
 def request(path, authenticated):
@@ -33,7 +33,7 @@ try:
     code, body = request('/', True); assert code == 200 and b'__DSH_BOOT__' in body, 'Official WebUI unavailable'
     code, _ = request('/enterprise/api/v1/local/status', False); assert code == 403, 'Unauthenticated local API admitted request'
     code, body = request('/enterprise/api/v1/local/status', True)
-    data = json.loads(body)['data']; assert code == 200 and data['bundleVersion'] == '0.1.0-beta.22' and data['state'] != 'FAILED', 'OwnDsh unavailable'
+    data = json.loads(body)['data']; assert code == 200 and data['bundleVersion'] == '0.1.0-beta.23' and data['state'] != 'FAILED', 'OwnDsh unavailable'
     report = {key: state[key] for key in ['generation', 'pid', 'origin', 'node', 'harness', 'plugin', 'nativeStorage']}
     report.update({'officialWebUi': 200, 'unauthenticatedLocalApi': 403, 'authenticatedLocalApi': 200, 'platformState': data['state']})
     output = json.dumps(report, indent=2) + '\n'

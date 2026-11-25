@@ -87,7 +87,7 @@ def runtime():
                 if value and value.get('phase') == 'ready' and value.get('generation') != exclude: return path.parent, value
             return None
         def inspect(run_directory, state):
-            check(state['node'].startswith('v24.20.0') and state['harness'] == '0.2.2-rc.5' and state['plugin'] == '0.1.0-beta.22', 'runtime version mismatch')
+            check(state['node'].startswith('v24.20.0') and state['harness'] == '0.2.2-rc.5' and state['plugin'] == '0.1.0-beta.23', 'runtime version mismatch')
             check(state['nativeStorage'] == 'flock+link', 'native storage gate did not pass')
             origin = state['origin']
             check(re.fullmatch(r'http://127\.0\.0\.1:[0-9]+/?', origin) is not None, 'unexpected origin')
@@ -101,7 +101,7 @@ def runtime():
             check(status == 200 and b'__DSH_BOOT__' in html, 'official WebUI did not boot')
             check(fetch('/enterprise/api/v1/local/status')[0] == 403, 'anonymous API was admitted')
             status, body = fetch('/enterprise/api/v1/local/status', True)
-            check(status == 200 and json.loads(body)['data']['bundleVersion'] == '0.1.0-beta.22', 'authenticated API failed')
+            check(status == 200 and json.loads(body)['data']['bundleVersion'] == '0.1.0-beta.23', 'authenticated API failed')
             page = wait_for(lambda: read_json(run_directory / 'page-state.json'), 'WKWebView did not commit')
             check(page['generation'] == state['generation'] and page['committed'] and page['nodeStarts'] == 1, 'stale native page report')
             def rendered():

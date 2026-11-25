@@ -1,6 +1,6 @@
 # OwnDsh Mobile - 共享 DSH 核心的 Android/iOS 员工客户端
 
-Java 17 + Swift/UIKit + Android WebView/WKWebView + NSH 0.6.1 + digidem Node Mobile 24.20.0-0 + DSH 0.2.2-rc.5 + owndsh-plugin 0.1.0-beta.22
+Java 17 + Swift/UIKit + Android WebView/WKWebView + NSH 0.6.1 + digidem Node Mobile 24.20.0-0 + DSH 0.2.2-rc.5 + owndsh-plugin 0.1.0-beta.23
 
 <directory>
 .github/ - Android测试APK发行与iOS无签名双目标构建、真实Simulator验收和30天证据产物

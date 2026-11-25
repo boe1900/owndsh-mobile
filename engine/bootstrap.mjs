@@ -115,9 +115,9 @@ try {
   const unauthorized = await fetch(statusUrl);
   if (unauthorized.status !== 403) throw new Error('OwnDsh local API admitted an unauthenticated request');
   const authorized = await fetch(statusUrl, { headers: { cookie: cookie.split(';', 1)[0] } });
-  if (!authorized.ok || (await authorized.json()).data.bundleVersion !== '0.1.0-beta.22') throw new Error('OwnDsh authenticated local API is unavailable');
-  await publish({ phase: 'ready', origin, cookie, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22', nativeStorage, pid: process.pid });
-  process.stderr.write(`OWNDSH_READY ${JSON.stringify({ generation, origin, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.22' })}\n`);
+  if (!authorized.ok || (await authorized.json()).data.bundleVersion !== '0.1.0-beta.23') throw new Error('OwnDsh authenticated local API is unavailable');
+  await publish({ phase: 'ready', origin, cookie, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.23', nativeStorage, pid: process.pid });
+  process.stderr.write(`OWNDSH_READY ${JSON.stringify({ generation, origin, node: process.version, harness: '0.2.2-rc.5', plugin: '0.1.0-beta.23' })}\n`);
 } catch (error) {
   process.stderr.write('OWNDSH_FAILED runtime initialization failed\n');
   await publish({ phase: 'failed', reason: 'runtime initialization failed' });
