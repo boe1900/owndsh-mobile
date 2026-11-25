@@ -1,4 +1,4 @@
-# [INPUT]: 同一 npm lock、共享 engine/shell（含手机插件和原生授权回归）、平台专属 build 暂存与锁定 NSH CLI
+# [INPUT]: 同一 npm lock、共享 engine/shell、按平台选择的上游适配与专属 build 暂存、锁定 NSH CLI
 # [OUTPUT]: 独立 npm 安装、确定性 engine.zip/目录、摘要与包含无扩展名二进制的原生排除清单
 # [POS]: 两端仅共享真正相同的载荷准备；不拥有 SDK、签名或平台编译
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -33,9 +33,11 @@ def prepare_payload(root, platform, build, nsh, node, env, skip_install=False):
     run(['python3', '-m', 'unittest', 'discover', '-s', root / 'scripts', '-p', '*_test.py'])
     if not skip_install:
         run([pathlib.Path(node).with_name('npm'), 'ci', '--ignore-scripts', '--omit=optional', '--os=' + ('android' if platform == 'android' else 'darwin'), '--cpu=arm64', '--registry=https://registry.npmjs.org'], cwd=stage)
-    run([node, root / 'scripts/prepare-engine.mjs', stage])
-    run([node, root / 'scripts/prepare-engine.mjs', stage])
-    run([node, '--test', stage / 'text-only-attachments.test.mjs', stage / 'runtime-config.test.mjs', stage / 'native-request.test.mjs', stage / 'native-authorization.test.mjs', stage / 'mobile-native/index.test.mjs'])
+    run([node, root / 'scripts/prepare-engine.mjs', stage, platform])
+    run([node, root / 'scripts/prepare-engine.mjs', stage, platform])
+    engine_tests = ['text-only-attachments.test.mjs', 'runtime-config.test.mjs', 'native-request.test.mjs', 'native-authorization.test.mjs', 'mobile-native/index.test.mjs']
+    if platform == 'android': engine_tests.append('android-attachments.test.mjs')
+    run([node, '--test', *(stage / name for name in engine_tests)])
     run([nsh, 'test', root / 'shell'])
     assets = build / platform / 'assets'
     if assets.exists(): shutil.rmtree(assets)

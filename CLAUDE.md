@@ -16,6 +16,8 @@ AGENTS.md - 协作规范与 GEB 文档维护协议
 README.md - 独立仓库构建、设备验收和能力边界
 lifecycle-design.md - 生命周期所有权、上游方案取舍和远端页面恢复边界
 architecture.md - 共享核心与 Android/iOS 适配的目标结构、所有权、协议及验收契约
+attachment-design.md - 复用桌面 DSH 的手机附件流程、Android 编解码与 iOS 追平要求
+mobile-scenarios.md - 手机端候选应用场景、相册整理任务与双端边界；产品探索不代表能力交付或开发排期
 mobile-capabilities.md - 持续维护的双端手机系统操作支持矩阵，明确插件/共享传输/原生边界、权限、确认、结果和验收
 versions.json - appVersion 基础版本与原生工具链、运行时版本、下载 URL 和 SHA256 的唯一锁定入口
 .gitignore - 隔离构建缓存、依赖、运行状态、凭据和签名密钥
@@ -34,6 +36,7 @@ Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity �
 
 DSH 占满系统栏安全区域，页面与引擎分别恢复。网页恢复保留同源目标与有限返回历史，NSH 仅在主文档提交前遮罩。远程工作区只走 DSH 自有入口，原生层不增加 Console 入口或第二套 Remote 协议。
 
+Android 本地会话通过系统文档选择器发送图片和普通文件。DSH 负责上传回执、会话引用和模型请求，Android 提供系统编解码与排他文件发布。iOS 目前使用纯文本分支。平台差异和待办见 mobile-capabilities.md。
 
 iOS 企业登录由 ASWebAuthenticationSession 承载，原 loopback 交付授权码，完成页 owndsh://open 只结束系统授权容器。普通浏览与其他 OAuth 留在 Safari 容器。
 

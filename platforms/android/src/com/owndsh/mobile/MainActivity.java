@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback 与系统能力 owner
- * [OUTPUT]: 自动恢复 DSH；原生浏览器请求优先 Custom Tabs，固定企业回调仅经当前绑定单次交付
+ * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback、AttachmentPicker 与系统能力 owner
+ * [OUTPUT]: 自动恢复 DSH；固定企业回调经当前绑定交付，本机工作区文件选择绑定发起页面
  * [POS]: mobile Android UI owner，独占当前绑定、网页和唯一恢复任务；Service 继续独占 Node
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -35,6 +35,7 @@ public final class MainActivity extends Activity {
     private NshView shell;
     private WebView web;
     private NativeCapabilities capabilities;
+    private AttachmentPicker attachmentPicker;
     private Binding binding;
     private WebBackForwardList pageHistory;
     private Recovery recovery = Recovery.NONE;
@@ -73,6 +74,7 @@ public final class MainActivity extends Activity {
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         capabilities = new NativeCapabilities(this, () -> binding != null && !binding.stopping && binding.binder != null && binding.binder.isBinderAlive());
+        attachmentPicker = new AttachmentPicker(this, saved == null ? 0 : saved.getInt("nextAttachmentRequest"));
         String incoming = getIntent().getDataString();
         getIntent().setData(null);
         if (incoming != null && !"owndsh://open".equals(incoming) && !authorization.offer(incoming)) { destroyed = true; finish(); return; }
@@ -169,8 +171,27 @@ public final class MainActivity extends Activity {
                 return true;
             }
         });
-        result.setWebChromeClient(new WebChromeClient());
+        result.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                Binding owner = binding;
+                String document = view.getUrl();
+                if (!resumed || !committed || !acceptsAttachmentPicker(view, owner, document)) {
+                    callback.onReceiveValue(null);
+                } else {
+                    attachmentPicker.open(callback, params, () -> acceptsAttachmentPicker(view, owner, document));
+                }
+                return true;
+            }
+        });
         return result;
+    }
+
+    private boolean acceptsAttachmentPicker(WebView view, Binding owner, String document) {
+        if (document == null || owner == null || owner != binding || owner.binder == null
+                || !owner.binder.isBinderAlive() || !activePage(view, document)
+                || !document.equals(view.getUrl())) return false;
+        String path = Uri.parse(document).getPath();
+        return path == null || !(path.equals("/enterprise/remote/views") || path.startsWith("/enterprise/remote/views/"));
     }
 
     private boolean activePage(WebView view, String url) {
@@ -188,6 +209,7 @@ public final class MainActivity extends Activity {
                 + (uri.getEncodedFragment() == null ? "" : "#" + uri.getEncodedFragment());
     }
     private void replaceWebView() {
+        attachmentPicker.invalidate();
         pageEpoch++;
         if (binding != null) binding.cookiePending = false;
         ArrayList<String> history = savedBackTargets();
@@ -231,6 +253,7 @@ public final class MainActivity extends Activity {
         Log.e("OwnDsh", "engine failed: " + detail);
         owner.stopping = true;
         capabilities.invalidate();
+        attachmentPicker.invalidate();
         showOverlay("recovering");
         schedule(Recovery.ENGINE, policy.failed(SystemClock.uptimeMillis()));
         send(owner, EngineService.STOP, new Bundle());
@@ -332,6 +355,7 @@ public final class MainActivity extends Activity {
         web.loadUrl(pageUrl);
     }
     private void prepareNavigation(String url) {
+        attachmentPicker.invalidate();
         pageUrl = url;
         pageFailed = false;
     }
@@ -444,7 +468,8 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
     @Override protected void onActivityResult(int code, int result, Intent data) {
-        if (!capabilities.activityResult(code, result, data)) super.onActivityResult(code, result, data);
+        if (!attachmentPicker.activityResult(code, result, data) && !capabilities.activityResult(code, result, data))
+            super.onActivityResult(code, result, data);
     }
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         if (!capabilities.permissionResult(code, grants)) super.onRequestPermissionsResult(code, permissions, grants);
@@ -458,12 +483,14 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle saved) {
         saved.putString("target", target);
         saved.putStringArrayList("backTargets", savedBackTargets());
+        saved.putInt("nextAttachmentRequest", attachmentPicker.nextRequest());
         super.onSaveInstanceState(saved);
     }
     @Override protected void onDestroy() {
         destroyed = true;
         authorization.clear();
         capabilities.destroy();
+        attachmentPicker.invalidate();
         pageEpoch++;
         main.removeCallbacksAndMessages(null);
         Binding owner = binding;

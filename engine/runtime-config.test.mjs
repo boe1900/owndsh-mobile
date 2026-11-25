@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 真实共享 RuntimeConfig 解析器与 Node 测试器
- * [OUTPUT]: 验证两端显式绑定、路径、代次边界与 Android 固定回调广告
+ * [OUTPUT]: 验证显式绑定、路径、代次边界与 Android 固定回调和图片编解码路径
  * [POS]: 私有文件协议的本地行为回归，不进入移动载荷
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,4 +20,13 @@ test('native authorization must be explicitly advertised with the exact fixed UR
   for (const value of [null, '', `${uri}?code=x`, `${uri}/`, 'owndsh://open', 'http://127.0.0.1:8080/callback']) {
     assert.throws(() => parseRuntimeConfig({ ...base, native: { ...native, authorizationCallbackUri: value } }));
   }
+});
+test('the image codec binding requires an absolute path from Android', () => {
+  const android = { publication: 'renameat2', flockPath: '/app/flock', publishPath: '/app/fs' };
+  const ios = { publication: 'link', flockPath: '/app/flock' };
+  const imageCodecPath = '/app/lib/image.so';
+  assert.equal(parseRuntimeConfig({ ...base, native: android }).native.imageCodecPath, undefined);
+  assert.equal(parseRuntimeConfig({ ...base, native: { ...android, imageCodecPath } }).native.imageCodecPath, imageCodecPath);
+  assert.throws(() => parseRuntimeConfig({ ...base, native: { ...ios, imageCodecPath } }));
+  assert.throws(() => parseRuntimeConfig({ ...base, native: { ...android, imageCodecPath: 'relative' } }));
 });

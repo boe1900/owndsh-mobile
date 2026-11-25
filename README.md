@@ -70,13 +70,17 @@ java -cp /tmp/owndsh-recovery-test com.owndsh.mobile.RecoveryPolicyTest
 
 策略和NSH headless回归不代表Android设备时序已经验收；Binder故障、Renderer重建、PKCE往返、系统栏与键盘需要真实运行验证。
 
-官方 registry 默认选择手机 preset，保留官方模型、会话、文本文件工具、审批、权限、压缩、提问、待办和只读 `device_info`。默认私有工作区通过官方 `workspaceRegistry.initializeDefault` 初始化。会话控制器仍获得官方 AttachmentStore 接口，纯文本准入委托官方实现，图片与文件附件明确拒绝；composer 使用既有上传门禁关闭选择/粘贴/拖放附件入口。工作区文本文件读写不经过附件存储。Bash/PTY、桌面打开器、Office、桌面 preset 和运行时桌面原生插件安装未作为手机能力交付。ShellExecutor 明确拒绝所有命令，不用假输出满足依赖。
+官方 registry 默认选择手机 preset，保留官方模型、会话、文本文件工具、审批、权限、压缩、提问、待办和只读 `device_info`。默认私有工作区通过官方 `workspaceRegistry.initializeDefault` 初始化。Android 本地会话可以从输入框的「＋ → 文件」发送图片和普通文件，单个附件上限 20 MiB。普通文件保留原字节。JPEG、PNG、WebP 和 GIF 可预览，并由支持图片的模型接收。Agent 也能用 DSH 的 `read_image` 读取工作区图片。iOS 附件、文档理解和远程附件传输列为后续能力。[附件设计与双端差异](attachment-design.md)
+
+工作区文本文件读写独立于附件存储。Bash/PTY、桌面打开器、Office、桌面 preset 和运行时桌面原生插件安装未作为手机能力交付。ShellExecutor 明确拒绝所有命令，不用假输出满足依赖。
 
 Android 不提供上游 Node builtin addon 的预编译包，因此启动使用 Node 官方 `--expose-internals`，只替换该 addon 的取内部模块入口，保留官方 loader。Android 私有目录禁止 hardlink；安装身份、JSONL 发布和文件 create-if-absent 通过 `renameat2(RENAME_NOREPLACE)` 保留原子且不覆盖的语义，官方 flock/JSONL/fsync/错误算法不变。所有适配均受源码 SHA256 与精确文本边界约束，上游变更会使构建失败。
 
 共享核心为engine/和shell/；系统适配集中在platforms/android/与platforms/ios/，详见[双端架构](architecture.md)。
 
 手机系统操作由本仓库自有的 `engine/mobile-native/` 插件注册，与业务 `owndsh-plugin` 分开。共享传输复用私有文件 IPC/Binder；Android `capabilities/` 集中参数白名单、前台检查、权限与原生确认。Android 已实现即时通知、剪贴板读写、文本分享、SAF 文本导入导出、地图、日历编辑、闹钟、倒计时、拨号页和短信草稿；iOS 当前仅广告 `device_info`。系统交接只返回 opened，不能据此声称保存、拨出或发送。完整参数、双端状态、权限、取消和验收见[手机系统操作支持参考](mobile-capabilities.md)。
+
+[手机端应用场景](mobile-scenarios.md)记录相册整理、远程任务接力、截图信息整理和随手收集的候选流程与限制。该文档用于产品探索，尚未进入功能实现。
 
 
 ## iOS构建与验收

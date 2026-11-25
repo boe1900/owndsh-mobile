@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node Mobile 公共 node::Start、JNI 与 Android log
- * [OUTPUT]: 在 Service 线程中启动一次 Node，将原生 stderr 送到 logcat
+ * [INPUT]: 依赖 Node Mobile 公共 node::Start、JNI、图片编解码初始化与 Android log
+ * [OUTPUT]: 在 Service 线程中初始化图片编解码并启动一次 Node，将原生 stderr 送到 logcat
  * [POS]: mobile native 的薄桥；JS 引擎逻辑与 Android 生命周期留在各自 owner
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "image_codec.h"
 
 static std::string utf8(JNIEnv* env, jstring value) {
     const char* text = env->GetStringUTFChars(value, nullptr);
@@ -24,6 +25,7 @@ extern "C" JNIEXPORT jint JNICALL
 Java_com_owndsh_mobile_NodeBridge_start(JNIEnv* env, jclass, jstring script, jstring config, jstring home) {
     static std::atomic<bool> started{false};
     if (started.exchange(true)) return 70;
+    if (!initializeImageCodec(env)) return 70;
     const std::string root = utf8(env, home);
     setenv("HOME", root.c_str(), 1);
     setenv("TMPDIR", (root + "/tmp").c_str(), 1);

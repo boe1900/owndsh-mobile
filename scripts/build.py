@@ -124,7 +124,10 @@ run([bt / 'd8', '--lib', android, '--min-api', '28', '--output', dex, aar / 'cla
 shutil.copy2(tools / 'node-mobile/bin/arm64-v8a/libnode.so', libs / 'libnode.so')
 shutil.copy2(aar / 'jni/arm64-v8a/libnsh.so', libs / 'libnsh.so')
 shutil.copy2(ndk / 'sysroot/usr/lib/aarch64-linux-android/libc++_shared.so', libs / 'libc++_shared.so')
-run([ndk / 'bin/aarch64-linux-android28-clang++', '-std=c++20', '-shared', '-fPIC', '-fexceptions', '-frtti', '-O2', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,-soname,libowndsh_node.so', '-I' + str(tools / 'node-mobile/include/node'), ROOT / 'platforms/android/cpp/node_bridge.cpp', '-L' + str(libs), '-lnode', '-llog', '-stdlib=libc++', '-o', libs / 'libowndsh_node.so'])
+run([ndk / 'bin/aarch64-linux-android28-clang++', '-std=c++20', '-shared', '-fPIC', '-fexceptions', '-frtti', '-O2',
+     '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,-soname,libowndsh_node.so',
+     '-I' + str(tools / 'node-mobile/include/node'), ROOT / 'platforms/android/cpp/node_bridge.cpp',
+     ROOT / 'platforms/android/cpp/image_codec.cpp', '-L' + str(libs), '-lnode', '-llog', '-stdlib=libc++', '-o', libs / 'libowndsh_node.so'])
 for source, library in [(stage / 'node_modules/@deepseek-ai/node-addon-system/src/flock.c', 'libowndsh_flock.so'), (ROOT / 'platforms/android/cpp/file_publish.c', 'libowndsh_fs.so')]:
     run([ndk / 'bin/aarch64-linux-android28-clang', '-shared', '-fPIC', '-O2', '-DNAPI_VERSION=8', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-I' + str(tools / 'node-mobile/include/node'), source, '-L' + str(libs), '-lnode', '-o', libs / library])
 for library in libs.glob('*.so'): run([ndk / 'bin/llvm-strip', '--strip-unneeded', library])

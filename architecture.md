@@ -22,6 +22,8 @@ licenses/               直接上游许可证
 
 每代引擎使用 RuntimeConfig：generation、runDirectory、home、workspace，以及明确的原生存储绑定配置。Android 显式提供 `native.authorizationCallbackUri=com.owndsh.mobile://oauth/callback`；未广告的平台不注册原生授权工厂。配置只由宿主生成，发布就绪前必须完成真实存储验证。
 
+Android 的 `native.imageCodecPath` 启用本地会话图片、普通文件和 `read_image`。Activity 将系统选择结果交给发起页面，DSH 管理上传、持久引用、完整性校验和模型请求。Android 提供系统编解码和排他发布，目录同步截止于应用私有 `files`。iOS 目前使用纯文本分支。[附件方案](attachment-design.md)
+
 文件 IPC 保留 state.json 与 browser-<id>.request/.response。请求含 generation、id、kind、deadline 和请求数据，响应含 generation、ok、data 或结构化 error。id 使用 UUID，宿主只处理当前代和已知请求种类；双方原子写入并设置私有权限，响应不可覆写。单个坏请求单独拒绝，不阻塞其他请求。配置、Cookie、认证材料不进入 NSH、构建产物或公共日志；固定 OAuth URI 中的 code/state 只作为浏览器到原生的短暂交付。
 
 DSH 启动、插件安装身份、profile/preset、Cookie 交换、WebUI 与本机 API 门禁在共享 bootstrap 中实现。ready 必须证明官方 WebUI 可用、匿名本机 API 返回 403、认证请求返回 200、锁与排他文件发布工作正常。
