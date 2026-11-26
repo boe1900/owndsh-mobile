@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback、AttachmentPicker 与系统能力 owner
- * [OUTPUT]: 自动恢复 DSH；固定企业回调经当前绑定交付，本机工作区文件选择绑定发起页面
+ * [INPUT]: 依赖 NshView、WebView、私有 Messenger、AuthorizationCallback、AttachmentPicker、PageBrowser 与系统能力 owner
+ * [OUTPUT]: 自动恢复 DSH；固定企业回调经当前绑定交付，本机文件选择绑定发起页面，轻浏览器绑定发起会话
  * [POS]: mobile Android UI owner，独占当前绑定、网页和唯一恢复任务；Service 继续独占 Node
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -17,6 +17,7 @@ import android.view.*;
 import android.webkit.*;
 import android.widget.*;
 import com.longbridge.nsh.NshView;
+import com.owndsh.mobile.browser.PageBrowser;
 import com.owndsh.mobile.capabilities.NativeCapabilities;
 import org.json.JSONObject;
 import java.io.File;
@@ -36,6 +37,7 @@ public final class MainActivity extends Activity {
     private WebView web;
     private NativeCapabilities capabilities;
     private AttachmentPicker attachmentPicker;
+    private PageBrowser pageBrowser;
     private Binding binding;
     private WebBackForwardList pageHistory;
     private Recovery recovery = Recovery.NONE;
@@ -74,6 +76,7 @@ public final class MainActivity extends Activity {
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         capabilities = new NativeCapabilities(this, () -> binding != null && !binding.stopping && binding.binder != null && binding.binder.isBinderAlive());
+        pageBrowser = new PageBrowser(this, this::sendVisibility);
         attachmentPicker = new AttachmentPicker(this, saved == null ? 0 : saved.getInt("nextAttachmentRequest"));
         String incoming = getIntent().getDataString();
         getIntent().setData(null);
@@ -253,6 +256,7 @@ public final class MainActivity extends Activity {
         Log.e("OwnDsh", "engine failed: " + detail);
         owner.stopping = true;
         capabilities.invalidate();
+        pageBrowser.invalidate();
         attachmentPicker.invalidate();
         showOverlay("recovering");
         schedule(Recovery.ENGINE, policy.failed(SystemClock.uptimeMillis()));
@@ -261,6 +265,7 @@ public final class MainActivity extends Activity {
     private void died(Binding owner) {
         if (owner != binding) return;
         capabilities.invalidate();
+        pageBrowser.invalidate();
         boolean expected = owner.stopping;
         if (owner.deathLinked) { owner.binder.unlinkToDeath(owner, 0); owner.deathLinked = false; }
         if (owner.bound) { owner.bound = false; unbindService(owner); }
@@ -287,6 +292,7 @@ public final class MainActivity extends Activity {
             if (phase.equals("stopping")) {
                 owner.stopping = true;
                 capabilities.invalidate();
+                pageBrowser.invalidate();
                 policy.interrupted(SystemClock.uptimeMillis());
                 showOverlay("recovering");
                 schedule(Recovery.ENGINE, 0);
@@ -315,14 +321,23 @@ public final class MainActivity extends Activity {
             send(owner, EngineService.BROWSER_RESULT, result);
             return true;
         }
-        if (message.what == EngineService.NATIVE_CANCEL) { capabilities.cancel(data.getString("id", "")); return true; }
+        if (message.what == EngineService.NATIVE_CANCEL) {
+            String id = data.getString("id", "");
+            capabilities.cancel(id);
+            pageBrowser.cancel(id);
+            return true;
+        }
         if (message.what == EngineService.NATIVE_OPERATION && !owner.stopping && !owner.generation.isEmpty()) {
             try {
-                capabilities.request(new JSONObject(data.getString("event", "{}")), value -> {
+                JSONObject event = new JSONObject(data.getString("event", "{}"));
+                NativeCapabilities.Completion completion = value -> {
                     if (destroyed || binding != owner || owner.stopping || !owner.generation.equals(incoming)) return;
                     Bundle result = new Bundle(); result.putString("generation", incoming); result.putString("id", data.getString("id")); result.putString("result", value.toString());
                     send(owner, EngineService.NATIVE_RESULT, result);
-                });
+                };
+                if (PageBrowser.KIND.equals(event.optString("kind"))) {
+                    pageBrowser.request(event, incoming, owner.binder, resumed && committed, completion);
+                } else capabilities.request(event, completion);
             } catch (org.json.JSONException invalid) { Log.e("OwnDsh", "invalid native IPC", invalid); }
             return true;
         }
@@ -410,7 +425,7 @@ public final class MainActivity extends Activity {
     }
     private void sendVisibility() {
         if (binding == null) return;
-        Bundle data = new Bundle(); data.putBoolean("visible", visible);
+        Bundle data = new Bundle(); data.putBoolean("visible", visible || pageBrowser.visible());
         data.putBoolean("foreground", resumed);
         send(binding, EngineService.VISIBILITY, data);
     }
@@ -490,6 +505,7 @@ public final class MainActivity extends Activity {
         destroyed = true;
         authorization.clear();
         capabilities.destroy();
+        pageBrowser.invalidate();
         attachmentPicker.invalidate();
         pageEpoch++;
         main.removeCallbacksAndMessages(null);

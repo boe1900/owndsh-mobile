@@ -2,15 +2,16 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-AndroidManifest.xml: Android 9+、API35 debug 应用与私有 engine；固定 com.owndsh.mobile://oauth/callback 与普通 owndsh://open 入口、dataSync 资格、系统权限和浏览器查询。
+AndroidManifest.xml: Android 9+、API35 debug 应用与私有 engine；固定 com.owndsh.mobile://oauth/callback 与普通 owndsh://open 入口、独立轻浏览器进程、dataSync 资格、系统权限和浏览器查询。
 res/: 黑底白鲸启动图标与网页登录通知前景，自适应与 Android 13 单色配置共用安全边距，五种密度位图保留旧版回退。
-src/com/owndsh/mobile/MainActivity.java: NSH/WebView/绑定与恢复任务 owner；仅当前本机 DSH 文档可以发起附件选择；固定企业回调经当前绑定单次交付。
+src/com/owndsh/mobile/MainActivity.java: NSH/WebView/绑定与恢复任务 owner；仅当前本机 DSH 文档可以发起附件选择；固定企业回调经当前绑定单次交付，轻浏览器有独立会话。
 src/com/owndsh/mobile/AttachmentPicker.java: 用 SAF 选择图片和普通文件，只向发起页面交付本次授权的文档 URI。导航、换代和销毁撤销旧请求。
 src/com/owndsh/mobile/EngineService.java: 管理 Node 和浏览器窗口，提供图片编解码绑定路径，并按同代、state、期限和租约应答私有授权。
 src/com/owndsh/mobile/ImageCodec.java: 用 Android 9+ ImageDecoder 在解码前限制像素和长边，应用方向与 sRGB 转换并重新编码首帧。
 src/com/owndsh/mobile/AuthorizationCallback.java: 纯 Java 固定 URI/参数解析与 Activity 单次内存交付槽；不拥有 PKCE、令牌或登录事务。
 src/com/owndsh/mobile/BrowserWindowLease.java: 纯pending/已打开状态，其他浏览器请求失败或原请求文件清理不能释放成功窗口，取消后的迟到交接不复活租约。
 src/com/owndsh/mobile/capabilities/: 原生系统操作唯一pending owner、纯参数白名单和租约状态机，集中前台/权限/确认/SAF/Intent与取消，详细支持见根mobile-capabilities.md。
+src/com/owndsh/mobile/browser/: 前台 HTTPS 轻浏览器，独立进程内隔离 Cookie，会话租约控制页面命令，原生工具栏管理用户接管。
 src/com/owndsh/mobile/RecoveryPolicy.java: 无 Android 的有界恢复退避，短暂 ready 不清债，主页面持续健康60秒才复位。
 RecoveryPolicyTest.java: 本地 JVM 行为回归，覆盖持续崩溃限速、健康窗口、中断加载与恢复负债。
 BrowserWindowLeaseTest.java: 本地JVM回归多请求失败、成功窗口延续、取消及迟到结果；OS后台联网资格由设备验收。
