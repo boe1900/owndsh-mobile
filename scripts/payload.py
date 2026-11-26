@@ -1,5 +1,5 @@
 # [INPUT]: 同一 npm lock、共享 engine/shell、按平台选择的上游适配与专属 build 暂存、锁定 NSH CLI
-# [OUTPUT]: 独立 npm 安装、确定性 engine.zip/目录、摘要与包含无扩展名二进制的原生排除清单
+# [OUTPUT]: 生成 engine.zip、依赖摘要、原生排除清单和 Android 页面控制器资产
 # [POS]: 两端仅共享真正相同的载荷准备；不拥有 SDK、签名或平台编译
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import hashlib, json, pathlib, shutil, subprocess, zipfile
@@ -43,12 +43,15 @@ def prepare_payload(root, platform, build, nsh, node, env, skip_install=False):
     if assets.exists(): shutil.rmtree(assets)
     assets.mkdir(parents=True)
     shutil.copytree(root / 'licenses', assets / 'licenses')
+    if platform == 'android':
+        run([node, root / 'scripts/build-page-controller.mjs', stage, assets])
     run([nsh, 'build', root / 'shell', '--release', '--out', assets / 'nsh'])
     excluded = []
     with zipfile.ZipFile(assets / 'engine.zip', 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(stage.rglob('*')):
             if not path.is_file(): continue
             relative = path.relative_to(stage)
+            if relative.parts[:3] == ('node_modules', '@page-agent', 'page-controller') or relative.parts[:2] == ('node_modules', 'ai-motion') or relative.as_posix() == 'mobile-native/page-controller.js': continue
             content = path.read_bytes()
             if native_binary(relative, content[:8]):
                 excluded.append({'path': str(relative), 'sha256': digest(path)})

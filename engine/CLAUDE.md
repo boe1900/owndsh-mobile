@@ -2,7 +2,7 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-package.json: 精确锁定官方 Harness、OwnDsh 插件与必要 peer，Node 模块安装不执行桌面脚本。
+package.json: 精确锁定官方 Harness、OwnDsh 插件、必要 peer 与 Android 构建用的 PageController。
 package-lock.json: npm 完整依赖图及制品 integrity，构建在每端独立build暂存以arm64、omit optional 执行干净 ci。
 bootstrap.mjs: 官方 profile 与本机 API 就绪门，加载 Android 图片编解码并启用附件界面、存储和工作区图片工具。
 mobile.patch.yml: 官方 mobile preset、归属隔离的压缩服务与按平台启用的附件界面和存储，关闭桌面工具入口。

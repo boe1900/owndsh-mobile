@@ -34,6 +34,8 @@ Service 是唯一 Node owner，每进程只调用一次 node::Start。Activity �
 
 手机系统操作只经现有私有文件 IPC/Binder。Android capabilities 单 owner 集中白名单参数、前台条件、权限与用户确认；取消/超时/换代撤销未执行请求。共享手机插件属于本仓库，与业务 owndsh-plugin 分开。iOS 仅广告 device_info，其他操作待平台实现，详见 mobile-capabilities.md。
 
+Android 轻浏览器通过共享插件的 `mobile_browser` 绑定调用会话。独立进程持有页面和 WebView 数据，page-agent PageController 处理 DOM。接管暂停工具操作并作废页面快照。
+
 DSH 占满系统栏安全区域，页面与引擎分别恢复。网页恢复保留同源目标与有限返回历史，NSH 仅在主文档提交前遮罩。远程工作区只走 DSH 自有入口，原生层不增加 Console 入口或第二套 Remote 协议。
 
 Android 本地会话通过系统文档选择器发送图片和普通文件。DSH 负责上传回执、会话引用和模型请求，Android 提供系统编解码与排他文件发布。iOS 目前使用纯文本分支。平台差异和待办见 mobile-capabilities.md。

@@ -46,6 +46,14 @@ iOS 当前仅广告 device_info，其他工具不注册。双端支持、参数�
 
 构建以同一 npm lock 生成各自独立的载荷暂存目录，不能让两端并行改写同一 node_modules。上游补丁保留完整源码 hash 校验与重复执行验证。
 
+## 轻浏览器
+
+共享插件用 `mobile_browser` 注册有限动作，从 DSH 执行上下文取得调用会话 ID，通过私有 `page-browser` 请求传递。Android 主 Activity 管理打开窗口的会话归属，将同代引擎请求交给未导出的浏览器 Activity。浏览器运行在 `:page_browser` 进程，通过 WebView 数据目录后缀隔离 DSH 的 Cookie 与存储。
+
+页面使用锁定版本的 page-agent `PageController` 生成带编号的 DOM 视图。宿主保留导航与控制权，点击和输入使用最近一次读页的快照。页面切换、接管和交还会使旧快照失效。接管后用户操作网页，宿主拒绝 Agent 操作。网页 JavaScript 与控制器共享页面环境，桥接只接受有界结果，网页文本按不可信数据处理。
+
+设计参考 Fish Pocket 的工具、原生页面和 DOM 控制器分层。实际依赖来自 npm 的 MIT 包 `@page-agent/page-controller`，其许可证随 APK 分发。[Fish Pocket 浏览器说明](https://github.com/imsai-sh/fish-pocket) · [page-agent 源码](https://github.com/alibaba/page-agent)
+
 ## 生命周期所有权
 
 Android 的 Service 独占 Node，Activity 独占页面与恢复任务。普通运行只由 Activity 绑定持有 Service；浏览器窗口另有 started 所有权，使 UI 进程被回收后仍可绑定原引擎。started/dataSync 不保证 OPPO 后台执行，企业登录由固定 scheme 先唤醒 Activity 再交码。返回应用释放 started 所有权，由新 Activity 绑定持有同代引擎。onStartCommand 返回 START_NOT_STICKY，不启动 Node 或恢复中断事务。失败后等待旧 Service 进程死亡，再建立下一代；保留绑定、Cookie 与页面代次检查。

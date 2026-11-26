@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 [INPUT]: Android 平台组件、res 中的 OwnDsh 图标与构建器注入的版本信息。
-[OUTPUT]: 应用身份、固定企业回调入口、私有引擎、浏览器 dataSync 资格与系统权限。
+[OUTPUT]: 应用身份、固定企业回调入口、私有引擎、独立轻浏览器、浏览器 dataSync 资格与系统权限。
 [POS]: Android 安装契约，供 aapt2 链接并由系统加载。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
@@ -22,6 +22,7 @@
       <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="owndsh" android:host="open" /></intent-filter>
       <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="com.owndsh.mobile" android:host="oauth" android:path="/callback" /></intent-filter>
     </activity>
+    <activity android:name=".browser.PageBrowserActivity" android:exported="false" android:process=":page_browser" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
     <service android:name=".EngineService" android:exported="false" android:process=":engine" android:stopWithTask="true" android:foregroundServiceType="dataSync" />
   </application>
 </manifest>

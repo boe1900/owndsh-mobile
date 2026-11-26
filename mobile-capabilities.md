@@ -36,11 +36,12 @@ SAF pending 持有 CancellationSignal、Future 和已打开的 AssetFileDescript
 
 ## 已实现工具
 
-Android 最低 9/API28。iOS 最低 15，只实现第一行。下表的 Android 实现已通过同签名 APK 构建及专用 Android 15/API35 模拟器验收。API28..34 和不同厂商真机尚未逐一验收；最低版本声明与 Java 编译不替代这些设备验证。
+Android 最低 9/API28。iOS 最低 15，只实现 `device_info`。下表的 Android 实现已通过同签名 APK 构建及专用 Android 15/API35 模拟器验收。API28..34 和不同厂商真机尚未逐一验收。
 
 | 操作 id | Android | iOS | 权限与确认 | 参数和返回 |
 | --- | --- | --- | --- | --- |
 | `device_info` | 已实现 | 已实现 | 前台，无个人标识权限 | 无参数。返回 platform/osVersion/manufacturer/model/batteryPercent/charging；Android 保留 androidVersion/apiLevel。电量不可用为 -1。 |
+| `mobile_browser` | 已实现 | 待实现，不广告 | 前台独立 WebView，用户可接管或关闭 | 导航、读页、点击、输入、滚动、后退、刷新和关闭。[轻浏览器](#轻浏览器) |
 | `mobile_notify` | 已实现 | 待实现，不广告 | 原生确认；API33+ 申请 POST_NOTIFICATIONS。拒绝后不自动重复申请，用户可在系统设置开启。 | `title` 1..120 字符，`text` 1..2000 字符。即时本应用通知，返回 completed。无定时或后台保证。 |
 | `mobile_clipboard_read` | 已实现 | 待实现，不广告 | 原生确认，明示把当前剪贴板文本交给会话。 | 无参数。只读取第一项纯文本，不强制转换 URI/Intent。completed + text，上限 64 KiB UTF-8。 |
 | `mobile_clipboard_write` | 已实现 | 待实现，不广告 | 原生确认，显示所写文本预览。 | `text`，允许空文本，上限 64 KiB UTF-8。completed。 |
@@ -55,6 +56,12 @@ Android 最低 9/API28。iOS 最低 15，只实现第一行。下表的 Android 
 | `mobile_sms` | 已实现 | 待实现，不广告 | ACTION_SENDTO 打开一个收件人的短信草稿，由用户发送；不申请 SEND_SMS。 | `number` 同拨号；`text`≤4000 字符。opened。 |
 
 每个文本值还受 64 KiB UTF-8 上限约束，拒绝 NUL 和不成对代理字符。系统 Intent 直接启动并捕获无 handler 错误，不依赖 Android 11 包可见性下可能返回空的 resolveActivity。文本分享 chooser 具有系统 handler，即使没有接收 App 也能打开，因此 manifest 仅声明 ACTION_SEND/text/plain 的包可见性并检查接收方，空列表返回 unavailable；不提供应用列表工具。
+
+## 轻浏览器
+
+在 Android 本地会话中请 Agent 打开一个 HTTPS 页面，浏览器会显示网页和当前地址。点 **接管** 后可以触屏操作网页。点 **交还 Agent** 后，下一次点击或输入需要重新读页。点 **关闭** 回到会话。
+
+`mobile_browser` 一次服务一个本地会话。页面使用独立的 WebView 数据目录。工具导航接受 HTTPS 域名，页面弹窗、文件上传和 Cookie 导出不在此接口中。登录或验证码交给用户处理。读页输出省略表单值，返回地址去掉查询参数和片段。Android 版通过 Android 15 模拟器验收，覆盖真实 DSH 工具注册、导航、读页、输入、点击、接管、交还和返回会话。iOS 待接入同一工具契约，使用独立的 WKWebView 数据存储和脚本环境。
 
 ## 会话输入与 iOS 待补能力
 
@@ -88,11 +95,9 @@ Android 现有系统操作与 iOS 的差异继续维护在「已实现工具」�
 | 天气 | 待实现 | 待实现 | 数据源、地区、定位与联网契约。 |
 | 健康数据 | 待实现 | 待实现 | Health Connect/HealthKit 分类授权与用途。 |
 | 智能家居 | 待实现 | 待实现 | Android 生态提供方与 Apple Home 授权差异。 |
-| 内置浏览器自动化 | 待实现 | 待实现 | 独立页面所有权与用户认证，不能控制 DSH WebView。 |
 | 应用列表/启动 | 待实现 | 待实现 | Android 包可见性与 iOS scheme/系统限制；不开放任意包调用。 |
 | 跨 App 读屏/操作 | 不在本轮范围 | 不在本轮范围 | Android Accessibility 与 iOS 系统限制，必须单独授权设计。 |
 | 截图 | 待实现 | 待实现 | MediaProjection 用户同意与 iOS 屏幕采集限制。 |
-| 用户接管 | 待实现 | 待实现 | 明确交接、暂停 Agent 与恢复信号。 |
 | 高权限 Android shell | 不在本轮范围 | 不适用 | 不把当前拒绝型 ShellExecutor 当作 shell 实现。 |
 | 后台显示屏/持续运行 | 不在本轮范围 | 不在本轮范围 | 两端进程和前后台限制，没有无限后台承诺。 |
 

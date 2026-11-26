@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Android Messenger、私有资产、NodeBridge、BrowserWindowLease 和固定授权回调解析器
- * [OUTPUT]: 提供本机附件编解码绑定与代次隔离的私有路由；浏览器窗口持有有界 started/dataSync 资格
+ * [OUTPUT]: 提供本机附件编解码绑定与代次隔离的私有路由，系统授权浏览器窗口持有有界 started/dataSync 资格
  * [POS]: mobile Android 引擎唯一 owner，独立进程中运行 Node；停止即终结进程，重试必须等待 Binder death
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -18,6 +18,7 @@ import android.os.*;
 import android.util.Log;
 import org.json.JSONObject;
 import com.owndsh.mobile.capabilities.NativeCapabilities;
+import com.owndsh.mobile.browser.PageBrowser;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -241,6 +242,7 @@ public final class EngineService extends Service {
                 Set<String> allowed = new HashSet<>(Arrays.asList("generation", "id", "kind", "deadline"));
                 if (kind.equals("browser")) allowed.add("url");
                 if (kind.equals("mobile-operation")) allowed.addAll(Arrays.asList("operation", "arguments"));
+                if (kind.equals(PageBrowser.KIND)) allowed.addAll(Arrays.asList("session", "arguments"));
                 if (kind.equals("authorization-callback")) allowed.add("state");
                 Iterator<String> keys = event.keys();
                 while (keys.hasNext()) if (!allowed.contains(keys.next())) throw new IllegalArgumentException("Unexpected request field");
@@ -254,7 +256,10 @@ public final class EngineService extends Service {
                             : NativeCapabilities.error("not_foreground", "OwnDsh must be in the foreground")); continue;
                 }
                 Bundle data = new Bundle(); data.putString("generation", generation); data.putString("id", id); data.putLong("deadline", deadline);
-                if (kind.equals("mobile-operation")) { data.putString("event", event.toString()); send(NATIVE_OPERATION, data); }
+                if (kind.equals("mobile-operation") || kind.equals(PageBrowser.KIND)) {
+                    data.putString("event", event.toString());
+                    send(NATIVE_OPERATION, data);
+                }
                 else if (kind.equals("browser")) {
                     String url = event.getString("url");
                     if (!protectBrowserWindow(id)) {

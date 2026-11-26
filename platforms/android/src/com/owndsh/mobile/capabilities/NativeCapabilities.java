@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Activity 生命周期/回调、私有请求租约与 MobileOperation 参数白名单
- * [OUTPUT]: 提供能力发现和设备信息，串行执行经前台核验/原生确认的手机操作，结构化区分交接与完成
+ * [OUTPUT]: 提供能力发现和设备信息，广告独立轻浏览器，串行执行经前台核验/原生确认的手机操作，结构化区分交接与完成
  * [POS]: Android 系统能力唯一 owner；不拥有 Node、WebView 或业务插件，Activity/Service 只做薄路由
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -16,6 +16,7 @@ import android.os.*;
 import android.provider.AlarmClock;
 import android.provider.CalendarContract;
 import org.json.*;
+import com.owndsh.mobile.browser.PageBrowser;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.*;
@@ -75,6 +76,7 @@ public final class NativeCapabilities {
     public static JSONObject discovery() throws JSONException {
         JSONArray ids = new JSONArray().put("device_info");
         for (MobileOperation.Kind kind : MobileOperation.Kind.values()) ids.put(kind.id);
+        ids.put(PageBrowser.TOOL);
         return new JSONObject().put("protocol", 1).put("platform", "android").put("operations", ids);
     }
     public static JSONObject deviceInfo(Context context) throws JSONException {
